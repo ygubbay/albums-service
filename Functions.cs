@@ -9,27 +9,20 @@ using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
 using System.IO;
-using System.Reflection;
+using System.Globalization;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats;
-
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DocumentModel;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
 {
-
-  /*public static class StreamExtensionMethod {
-   public static Stream ToStream(this Image image, ImageFormat format) {
-      var stream = new System.IO.MemoryStream();
-      image.Save(stream, format);
-      stream.Position = 0;
-      return stream;
-    }
-  }*/
+ 
     public class Functions
     {
        public Response Hello(Request request)
@@ -38,9 +31,22 @@ namespace PhotoAlbum
        }
 
 
-       public CreateAlbumResponse CreateAlbum(CreateAlbumRequest request)
+       public async Task<CreateAlbumResponse> CreateAlbum(CreateAlbumRequest request)
        {
-         return new CreateAlbumResponse();
+         var client = new AmazonDynamoDBClient();
+          var table = Table.LoadTable(client, "AlbumsTable");
+          var item = new Document();
+
+          var id = Guid.NewGuid();
+          item["id"] = id;
+          item["year"] = request.Year;
+          item["name"] = request.Name;
+          item["owner"] = request.Owner;
+          item["datecreated"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
+
+          await table.PutItemAsync(item);
+         return new CreateAlbumResponse { Id = id };
        }
 
        public async Task CreateThumbnail(S3Event evnt, ILambdaContext context)
@@ -98,42 +104,16 @@ namespace PhotoAlbum
                   putRequest.ContentType = "image/" + imageType;
                   putRequest.Key = evnt.Records[0].S3.Object.Key;
                   putRequest.InputStream = outStream;
-                  //logger.LogLine($"PutObject with request {JsonConvert.SerializeObject(putRequest)}");
 
                   await s3Client.PutObjectAsync(putRequest);
               }
           }
         }
 
-    logger.LogLine($"Successfully resized {srcBucket}/{fileKey} and uploaded to {dstBucket}/{fileKey}");
+      logger.LogLine($"Successfully resized {srcBucket}/{fileKey} and uploaded to {dstBucket}/{fileKey}");
     }
 
-   
-    private static Size GetThumbnailSize(Image original)
-    {
-        // Maximum size of any dimension.
-        const int maxPixels = 200;
-
-        // Width and height.
-        int originalWidth = original.Width;
-        int originalHeight = original.Height;
-
-        // Compute best factor to scale entire image based on larger dimension.
-        double factor;
-        if (originalWidth > originalHeight)
-        {
-            factor = (double)maxPixels / originalWidth;
-        }
-        else
-        {
-            factor = (double)maxPixels / originalHeight;
-        }
-
-        // Return thumbnail size.
-        return new Size((int)(originalWidth * factor), (int)(originalHeight * factor));
-    }
-
-
+ 
     }
     public class Response
     {

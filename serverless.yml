@@ -28,10 +28,14 @@ provider:
       Action:
       - logs:PutLogEvents
       Resource: 
-      - arn:aws:logs:*:*:*
+      - arn:aws:logs:*:*:*      
+    - Effect: Allow
+      Action:
+        - "dynamodb:*"
+      Resource: "*"
     - Effect: "Allow"
       Action:
-          - "s3:*"
+        - "s3:*"
       Resource: "*"
 # you can overwrite defaults here
   stage: dev
@@ -48,7 +52,13 @@ functions:
     handler: CsharpHandlers::PhotoAlbum.Functions::CreateAlbum
     package:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
-      
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: arn:aws:dynamodb:eu-west-2:327044483855:table/AlbumsTable
   hello:
     handler: CsharpHandlers::PhotoAlbum.Functions::Hello
     package:

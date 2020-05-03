@@ -13,6 +13,7 @@
     <PackageReference Include="SixLabors.Core" Version="1.0.0-beta0008"/>
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.7.1"/>
     <PackageReference Include="SixLabors.ImageSharp" Version="1.0.0-rc0001"/>
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.3.105.38"/>
   </ItemGroup>
   <ItemGroup>
     <DotNetCliToolReference Include="Amazon.Lambda.Tools" Version="2.2.0"/>
