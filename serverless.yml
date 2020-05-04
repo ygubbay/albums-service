@@ -25,7 +25,7 @@ provider:
   name: aws
   runtime: dotnetcore2.1
   environment:
-    ALBUMS_TABLE: albums-${self:provider.stage}
+    ALBUMS_TABLE: ${self:custom.albumsTable}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -50,7 +50,7 @@ package:
 custom:
   PHOTO_ALBUMS_BUCKET: ygubbay-photo-albums
   PHOTO_THUMBNAILS_BUCKET: ygubbay-photo-albums-thumbnails
-  albumsTable: albums-${self:provider.stage}
+  albumsTable: albums-table-${self:provider.stage}
 
 functions:
   createAlbum:
@@ -99,14 +99,14 @@ resources:
       Properties:
         TableName: ${self:custom.albumsTable}
         AttributeDefinitions:
-          - AttributeName: year
-            AttributeType: N
-          - AttributeName: datecreated
+          - AttributeName: partition_key
+            AttributeType: S
+          - AttributeName: sort_key
             AttributeType: S
         KeySchema:
-          - AttributeName: year
+          - AttributeName: partition_key
             KeyType: HASH
-          - AttributeName: datecreated
+          - AttributeName: sort_key
             KeyType: RANGE
         # Set the capacity to auto-scale
         BillingMode: PAY_PER_REQUEST

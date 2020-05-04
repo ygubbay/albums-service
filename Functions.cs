@@ -43,18 +43,59 @@ namespace PhotoAlbum
           var item = new Document();
 
           var id = Guid.NewGuid();
+          var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
+
+          item["partition_key"] = $"{request.Year}_{datecreated}";
+          item["sort_key"] = $"alb";
           item["id"] = id;
           item["year"] = request.Year;
           item["name"] = request.Name;
           item["owner"] = request.Owner;
-          item["datecreated"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
-                                            CultureInfo.InvariantCulture);
+          item["datecreated"] = datecreated;
 
           logger.LogLine("Saving doc");
           await table.PutItemAsync(item);
           
           logger.LogLine("Album created");
-         return new CreateAlbumResponse { Id = id };
+         return new CreateAlbumResponse { Id = id, Year = request.Year, DateCreated = datecreated, IsSuccess = true };
+       }
+
+
+       public async Task<CreatePhotoResponse> CreatePhoto(CreatePhotoRequest request, ILambdaContext context)
+       {
+         var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(request)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
+         var client = new AmazonDynamoDBClient();
+          var table = Table.LoadTable(client, albumsTablename);
+          var item = new Document();
+
+          var id = Guid.NewGuid();
+          var uploadDate = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
+
+          item["partition_key"] = request.AlbumId;
+          item["sort_key"] = $"pic_{uploadDate}_{request.Filename}";
+          item["id"] = id;
+          item["orig_filename"] = request.Filename;
+          item["description"] = request.Description;
+          item["file_key"] = request.FileKey;
+          item["thumbnail_key"] = request.ThumbnailKey;
+          item["owner"] = request.Owner;
+
+          item["dateuploaded"] = uploadDate;
+
+          logger.LogLine("Saving doc");
+          await table.PutItemAsync(item);
+          
+          logger.LogLine("Album created");
+         return new CreatePhotoResponse { Id = id };
        }
 
        public async Task CreateThumbnail(S3Event evnt, ILambdaContext context)

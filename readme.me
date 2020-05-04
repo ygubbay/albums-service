@@ -12,7 +12,7 @@ serverless deploy --aws-profile photos-admin-profile --region eu-west-2 --verbos
 *TODO:
 Make the s3Event OR app event - call a new lambda called AddPicture()
 - create a picture 
-- id, album_id, dateupload, description, filename, album_year, owner
+- PK album_year, SK album_id__date_upload__orig_filename, id, description, album_year, owner, file_key, thumbnail_key
 - Key = PK album_year, SK album_id+id
 
 
