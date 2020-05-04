@@ -11,9 +11,6 @@ using Amazon.S3.Model;
 using System.IO;
 using System.Globalization;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Advanced;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats;
 using Amazon.DynamoDBv2;
@@ -31,10 +28,18 @@ namespace PhotoAlbum
        }
 
 
-       public async Task<CreateAlbumResponse> CreateAlbum(CreateAlbumRequest request)
+       public async Task<CreateAlbumResponse> CreateAlbum(CreateAlbumRequest request, ILambdaContext context)
        {
+         var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(request)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
          var client = new AmazonDynamoDBClient();
-          var table = Table.LoadTable(client, "AlbumsTable");
+          var table = Table.LoadTable(client, albumsTablename);
           var item = new Document();
 
           var id = Guid.NewGuid();
@@ -45,7 +50,10 @@ namespace PhotoAlbum
           item["datecreated"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
 
+          logger.LogLine("Saving doc");
           await table.PutItemAsync(item);
+          
+          logger.LogLine("Album created");
          return new CreateAlbumResponse { Id = id };
        }
 

@@ -10,7 +10,9 @@ serverless deploy --aws-profile photos-admin-profile --region eu-west-2 --verbos
 
 
 *TODO:
-CreateAlbum - 
-1. Serverless to provision this table
-2. Get tablename from serverless variable - pass it to the lambda function
-3. Add "stage" as a suffix
+Make the s3Event OR app event - call a new lambda called AddPicture()
+- create a picture 
+- id, album_id, dateupload, description, filename, album_year, owner
+- Key = PK album_year, SK album_id+id
+
+

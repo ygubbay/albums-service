@@ -20,9 +20,12 @@ service: albums-service
 # Check out our docs for more details
 # frameworkVersion: "=X.X.X"
 
+
 provider:
   name: aws
   runtime: dotnetcore2.1
+  environment:
+    ALBUMS_TABLE: albums-${self:provider.stage}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -38,14 +41,16 @@ provider:
         - "s3:*"
       Resource: "*"
 # you can overwrite defaults here
-  stage: dev
-  region: eu-west-2
-custom:
-  PHOTO_ALBUMS_BUCKET: ygubbay-photo-albums
-  PHOTO_THUMBNAILS_BUCKET: ygubbay-photo-albums-thumbnails
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'eu-west-2'}
 
 package:
   individually: true
+
+custom:
+  PHOTO_ALBUMS_BUCKET: ygubbay-photo-albums
+  PHOTO_THUMBNAILS_BUCKET: ygubbay-photo-albums-thumbnails
+  albumsTable: albums-${self:provider.stage}
 
 functions:
   createAlbum:
@@ -58,7 +63,10 @@ functions:
         - "dynamodb:*"
         # Restrict our IAM role permissions to
         # the specific table for the stage
-        Resource: arn:aws:dynamodb:eu-west-2:327044483855:table/AlbumsTable
+        Resource: AlbumsTable
+    environment:
+      tableName: ${self:custom.albumsTable}
+
   hello:
     handler: CsharpHandlers::PhotoAlbum.Functions::Hello
     package:
@@ -83,4 +91,29 @@ functions:
           bucket: ygubbay-photo-albums
           event: s3:ObjectCreated:*
           existing: true
-    
+
+resources:    
+  Resources:
+    AlbumsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.albumsTable}
+        AttributeDefinitions:
+          - AttributeName: year
+            AttributeType: N
+          - AttributeName: datecreated
+            AttributeType: S
+        KeySchema:
+          - AttributeName: year
+            KeyType: HASH
+          - AttributeName: datecreated
+            KeyType: RANGE
+        # Set the capacity to auto-scale
+        BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  AlbumsTableName:
+    Value:
+      Ref: AlbumsTable
+    Export:
+      Name: albums-table-ext
