@@ -15,6 +15,7 @@ using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DocumentModel;
+using Amazon.Lambda.APIGatewayEvents;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -28,12 +29,25 @@ namespace PhotoAlbum
        }
 
 
-       public async Task<CreateAlbumResponse> CreateAlbum(CreateAlbumRequest request, ILambdaContext context)
+       public async Task<APIGatewayProxyResponse> CreateAlbum(APIGatewayProxyRequest req, ILambdaContext context)
        {
          var logger = context.Logger;
 
-          logger.LogLine($"request {JsonConvert.SerializeObject(request)}");
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
           logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          try {
+
+          var request = JsonConvert.DeserializeObject<CreateAlbumRequest>(req.Body);
+
+          if (string.IsNullOrEmpty(request.Name) || (!(request.Year > 0)) || string.IsNullOrEmpty(request.Owner)  )
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { IsSuccess = false, ErrorMessage = $"Request has some missing parameters. request [JsonConvert.SerializeObject(request)]"})
+            } ;
+          }
 
           var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
           logger.LogLine($"albumsTablename {albumsTablename}");
@@ -58,7 +72,20 @@ namespace PhotoAlbum
           await table.PutItemAsync(item);
           
           logger.LogLine("Album created");
-         return new CreateAlbumResponse { Id = id, Year = request.Year, DateCreated = datecreated, IsSuccess = true };
+         return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, Year = request.Year, DateCreated = datecreated, IsSuccess = true })
+            } ;
+          }
+          catch (Exception ee)
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 500,
+              Body = ee.ToString()
+            } ;
+          }
        }
 
 
@@ -163,6 +190,13 @@ namespace PhotoAlbum
     }
 
  
+    }
+
+    public class LambdaRequest
+    {
+
+      public string body { get; set; }
+
     }
     public class Response
     {

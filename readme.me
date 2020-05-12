@@ -15,4 +15,16 @@ Make the s3Event OR app event - call a new lambda called AddPicture()
 - PK album_year, SK album_id__date_upload__orig_filename, id, description, album_year, owner, file_key, thumbnail_key
 - Key = PK album_year, SK album_id+id
 
+UI Create album
+UI Add picture -> uploads to S3 + adds pic to dynamodb + no thumbnail
+
+Thumbnail - daily process - 
+get all Pictures with no thumbnail 
+create thumbnail + update dynamodb
+
+Future - GetAlbumsByYear()
+- requires GlobalSecondaryIndex based on partition_key = album_year
+
+
+
 
