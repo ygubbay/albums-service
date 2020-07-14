@@ -75,7 +75,9 @@ namespace PhotoAlbum
          return new APIGatewayProxyResponse {
                 
               StatusCode = 200,
-              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, Year = request.Year, DateCreated = datecreated, IsSuccess = true })
+              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, 
+              Name = request.Name, Owner = request.Owner,
+              Year = request.Year, DateCreated = datecreated, IsSuccess = true })
             } ;
           }
           catch (Exception ee)

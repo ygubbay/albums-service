@@ -81,6 +81,9 @@ functions:
       - http:
           method: POST
           path: /api/album
+          cors: true
+          authorizer:
+            type: aws_iam   
 
   hello:
     handler: CsharpHandlers::PhotoAlbum.Functions::Hello
