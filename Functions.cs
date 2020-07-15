@@ -16,6 +16,7 @@ using SixLabors.ImageSharp.Formats;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.Lambda.APIGatewayEvents;
+using System.Collections.Generic;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -75,6 +76,9 @@ namespace PhotoAlbum
          return new APIGatewayProxyResponse {
                 
               StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
               Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, 
               Name = request.Name, Owner = request.Owner,
               Year = request.Year, DateCreated = datecreated, IsSuccess = true })
