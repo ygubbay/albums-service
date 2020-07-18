@@ -4,19 +4,21 @@ using Newtonsoft.Json;
 using PhotoAlbum.Models.Requests;
 using PhotoAlbum.Models.Responses;
 using System;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Amazon.S3;
-using Amazon.S3.Model;
 using System.IO;
 using System.Globalization;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats;
 using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DataModel;
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.Lambda.APIGatewayEvents;
 using System.Collections.Generic;
+using System.Linq;
+using Amazon.Runtime;
+
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -28,6 +30,43 @@ namespace PhotoAlbum
        {
            return new Response("Go Serverless v1.0! Your function executed successfully!", request);
        }
+
+
+      public async Task<APIGatewayProxyResponse> GetAlbums(APIGatewayProxyRequest request, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(request)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
+         var client = new AmazonDynamoDBClient();
+          var table = Table.LoadTable(client, albumsTablename);
+          ScanFilter scanFilter = new ScanFilter();
+          var result = table.Scan(scanFilter);
+
+          List<Document> documentList = new List<Document>();
+          do
+          {
+              var list = await result.GetNextSetAsync();
+              list.ForEach(ll => documentList.Add(ll));
+              Console.WriteLine("\nGet list of albums ............");
+              
+          } while (!result.IsDone);
+
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(documentList)
+          };
+          
+
+      }
 
 
        public async Task<APIGatewayProxyResponse> CreateAlbum(APIGatewayProxyRequest req, ILambdaContext context)
