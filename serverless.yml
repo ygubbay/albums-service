@@ -82,15 +82,7 @@ functions:
           method: POST
           path: /api/album
           cors:
-            origins:
-              - http://localhost:3000
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
+            origins: '*'
             allowCredentials: true
           authorizer:
             type: aws_iam   
@@ -121,7 +113,28 @@ functions:
           existing: true
 
 resources:    
+  # API Gateway Errors
+  #- ${file(resources/api-gateway-errors.yml)}
+
   Resources:
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
+    GatewayResponseDefault5XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_5XX
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
     AlbumsTable:
       Type: AWS::DynamoDB::Table
       Properties:
