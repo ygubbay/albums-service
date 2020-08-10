@@ -81,12 +81,35 @@ functions:
     events: 
       - http:
           method: GET
-          path: /api/albums
+          path: /albums
           cors:
             origins: '*'
             allowCredentials: true
           authorizer:
             type: aws_iam   
+
+  getAlbum:
+    handler: CsharpHandlers::PhotoAlbum.Functions::GetAlbum
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: AlbumsTable
+    environment:
+      tableName: ${self:custom.albumsTable}
+    events: 
+      - http:
+          method: GET
+          path: /album/{PartitionKey}
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam
 
   createAlbum:
     handler: CsharpHandlers::PhotoAlbum.Functions::CreateAlbum
@@ -104,7 +127,7 @@ functions:
     events: 
       - http:
           method: POST
-          path: /api/album
+          path: /albums
           cors:
             origins: '*'
             allowCredentials: true

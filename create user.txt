@@ -1,0 +1,7 @@
+aws cognito-idp sign-up \
+  --region us-east-2 \
+  --client-id 3mt05lhgc34tu32cai6p6e2v2t \
+  --username ygubbay@gmail.com \
+  --password ******* \
+  --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Yehuda" 
+  

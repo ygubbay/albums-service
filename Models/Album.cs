@@ -10,7 +10,7 @@ namespace PhotoAlbum.Models.Responses
         public string Owner {get;set;}
         public string DateCreated {get;set;}
 
-        public string Partition_Key { get { return $"{Year}_{DateCreated}";} }
+        public string Partition_Key { get { return $"{Year}_{Id}";} }
     }
 
 }

@@ -18,7 +18,7 @@ using Amazon.Lambda.APIGatewayEvents;
 using System.Collections.Generic;
 using System.Linq;
 using Amazon.Runtime;
-
+using Amazon.DynamoDBv2.Model;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -56,17 +56,81 @@ namespace PhotoAlbum
               
           } while (!result.IsDone);
 
+          List<Album> albums = new List<Album>();
+          documentList.ForEach(doc => albums.Add(new Album { Name = doc["name"], 
+                                                              Year = (int)doc["year"],
+                                                              Owner = doc["owner"],
+                                                              Id = (Guid)doc["id"],
+                                                              DateCreated = doc["datecreated"],
+                                                           }));
+
           return new APIGatewayProxyResponse {
                 
               StatusCode = 200,
               Headers = new Dictionary<string, string> () { 
                 { "Access-Control-Allow-Origin", "*"},
                 { "Access-Control-Allow-Credentials", "true" } },
-              Body = JsonConvert.SerializeObject(documentList)
+              Body = JsonConvert.SerializeObject(albums)
           };
           
 
       }
+
+      public async Task<APIGatewayProxyResponse> GetAlbum(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
+          var partition_key = req.PathParameters["PartitionKey"];
+
+         var client = new AmazonDynamoDBClient();
+
+         var db_request = new QueryRequest
+          {
+              TableName = albumsTablename,
+              KeyConditionExpression = "partition_key = :v_Id",
+              ExpressionAttributeValues = new Dictionary<string, AttributeValue> {
+                  {":v_Id", new AttributeValue { S = partition_key }}}
+          };
+
+          Album album;
+          var result = await client.QueryAsync(db_request);
+
+          if (result.Items.Count > 0)
+          {
+            logger.LogLine($"album result: [{JsonConvert.SerializeObject(result)}]");
+          
+            // Get first item
+            var item = result.Items[0];
+            album = new Album { Name = item["name"].S, 
+                                Owner = item["owner"].S,
+                                Year = Convert.ToInt32(item["year"].N),
+                                Id = new Guid(item["id"].S),
+                                DateCreated = item["datecreated"].S };
+
+          }
+          else {
+            throw new KeyNotFoundException($"No items received for partition_key [{partition_key}]");
+          }
+      
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(album)
+          };
+          
+
+      }
+
+
 
 
        public async Task<APIGatewayProxyResponse> CreateAlbum(APIGatewayProxyRequest req, ILambdaContext context)
@@ -100,7 +164,7 @@ namespace PhotoAlbum
           var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
 
-          item["partition_key"] = $"{request.Year}_{datecreated}";
+          item["partition_key"] = $"{request.Year}_{id}";
           item["sort_key"] = $"alb";
           item["id"] = id;
           item["year"] = request.Year;
