@@ -110,6 +110,28 @@ functions:
             allowCredentials: true
           authorizer:
             type: aws_iam
+  addUpload:
+    handler: CsharpHandlers::PhotoAlbum.Functions::AddUpload
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: AlbumsTable
+    environment:
+      tableName: ${self:custom.albumsTable}
+    events: 
+      - http:
+          method: POST
+          path: /albums/uploads
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
 
   createAlbum:
     handler: CsharpHandlers::PhotoAlbum.Functions::CreateAlbum

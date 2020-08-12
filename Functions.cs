@@ -198,6 +198,61 @@ namespace PhotoAlbum
        }
 
 
+      public async Task<APIGatewayProxyResponse> AddUpload(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+          var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          try {
+
+            var request = JsonConvert.DeserializeObject<AddUploadRequest>(req.Body);
+
+            var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+            logger.LogLine($"albumsTablename {albumsTablename}");
+
+            var client = new AmazonDynamoDBClient();
+            var table = Table.LoadTable(client, albumsTablename);
+            var item = new Document();
+
+            var id = Guid.NewGuid();
+            var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                              CultureInfo.InvariantCulture);
+
+            item["partition_key"] = request.AlbumKey;
+            item["sort_key"] = $"upload_{request.OriginalFilename}" ;
+            item["filename"] = request.Filename;
+            item["original_filename"] = request.OriginalFilename;
+            item["last_modified_date"] = request.LastModifiedDate;
+            item["owner"] = request.Owner;
+            item["size"] = request.Size;
+            item["type"] = request.Type;
+            item["datecreated"] = datecreated;
+
+            logger.LogLine("Saving doc");
+            await table.PutItemAsync(item);
+            
+            logger.LogLine("Upload created");
+          return new APIGatewayProxyResponse {
+                  
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> () { 
+                  { "Access-Control-Allow-Origin", "*"},
+                  { "Access-Control-Allow-Credentials", "true" } },
+                Body = ""
+            };
+          }
+          catch (Exception ee)
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 500,
+              Body = ee.ToString()
+            } ;
+          }
+      }
+
        public async Task<CreatePhotoResponse> CreatePhoto(CreatePhotoRequest request, ILambdaContext context)
        {
          var logger = context.Logger;
