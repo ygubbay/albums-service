@@ -46,6 +46,11 @@ provider:
       Action:
         - "s3:*"
       Resource: "*"
+    - Effect: "Allow"
+      Action: 
+       - "lambda:RemovePermission"
+      Resource: 
+        - !Sub "arn:aws:lambda:eu-west-2:327044483855:function:albums-service-dev*"
 # you can overwrite defaults here
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'eu-west-2'}
@@ -122,6 +127,7 @@ functions:
         # the specific table for the stage
         Resource: AlbumsTable
     environment:
+      albums_bucket: ${self:custom.PHOTO_ALBUMS_BUCKET}
       tableName: ${self:custom.albumsTable}
     events: 
       - http:
@@ -161,7 +167,7 @@ functions:
     package:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
 
-  createthumbnail:
+  autothumbnail:
     handler: CsharpHandlers::PhotoAlbum.Functions::CreateThumbnail
     package:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
@@ -175,9 +181,12 @@ functions:
       Action:
           - "s3:*"
       Resource: "*"
+    environment:
+      albums_bucket: ${self:custom.PHOTO_ALBUMS_BUCKET}
+      thumbnails_bucket: ${self:custom.PHOTO_THUMBNAILS_BUCKET}
     events:
       - s3:
-          bucket: ygubbay-photo-albums
+          bucket: ${self:custom.PHOTO_ALBUMS_BUCKET}
           event: s3:ObjectCreated:*
           existing: true
 
@@ -220,6 +229,15 @@ resources:
             KeyType: RANGE
         # Set the capacity to auto-scale
         BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+        - IndexName: gsiAlbums
+          KeySchema:
+          - AttributeName: sort_key
+            KeyType: HASH
+          - AttributeName: partition_key
+            KeyType: RANGE
+          Projection:
+            ProjectionType: 'ALL'
 
 Outputs:
   AlbumsTableName:

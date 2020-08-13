@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Amazon.Runtime;
 using Amazon.DynamoDBv2.Model;
+using System.Web;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -40,29 +41,35 @@ namespace PhotoAlbum
           logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
 
           var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          
           logger.LogLine($"albumsTablename {albumsTablename}");
 
-         var client = new AmazonDynamoDBClient();
+          
+          var client = new AmazonDynamoDBClient();
           var table = Table.LoadTable(client, albumsTablename);
-          ScanFilter scanFilter = new ScanFilter();
-          var result = table.Scan(scanFilter);
 
-          List<Document> documentList = new List<Document>();
-          do
+          var db_request = new QueryRequest
           {
-              var list = await result.GetNextSetAsync();
-              list.ForEach(ll => documentList.Add(ll));
-              Console.WriteLine("\nGet list of albums ............");
-              
-          } while (!result.IsDone);
+              TableName = albumsTablename,
+              IndexName = "gsiAlbums",
+              KeyConditionExpression = "sort_key = :v_Id",
+              ExpressionAttributeValues = new Dictionary<string, AttributeValue> {
+                  {":v_Id", new AttributeValue { S = "alb" }}}
+          };
 
-          List<Album> albums = new List<Album>();
-          documentList.ForEach(doc => albums.Add(new Album { Name = doc["name"], 
-                                                              Year = (int)doc["year"],
-                                                              Owner = doc["owner"],
-                                                              Id = (Guid)doc["id"],
-                                                              DateCreated = doc["datecreated"],
-                                                           }));
+          List<Album> albumList = new List<Album>();
+          var result = await client.QueryAsync(db_request);
+
+          result.Items.ForEach(item => {
+
+              var album = new Album { Name = item["name"].S, 
+                                Owner = item["owner"].S,
+                                Year = Convert.ToInt32(item["year"].N),
+                                Id = new Guid(item["id"].S),
+                                DateCreated = item["datecreated"].S };
+              albumList.Add(album);
+
+          });
 
           return new APIGatewayProxyResponse {
                 
@@ -70,10 +77,8 @@ namespace PhotoAlbum
               Headers = new Dictionary<string, string> () { 
                 { "Access-Control-Allow-Origin", "*"},
                 { "Access-Control-Allow-Credentials", "true" } },
-              Body = JsonConvert.SerializeObject(albums)
+              Body = JsonConvert.SerializeObject(albumList)
           };
-          
-
       }
 
       public async Task<APIGatewayProxyResponse> GetAlbum(APIGatewayProxyRequest req, ILambdaContext context)
@@ -297,8 +302,8 @@ namespace PhotoAlbum
           logger.LogLine($"CreateThumbnail4: context {JsonConvert.SerializeObject(context)}");
          
           var srcBucket = evnt.Records[0].S3.Bucket.Name;
-          var dstBucket = srcBucket + "-thumbnails";
-          var fileKey = evnt.Records[0].S3.Object.Key;
+          var dstBucket = "ygubbay-photo-albums-thumbnails";
+          var fileKey =  HttpUtility.UrlDecode(evnt.Records[0].S3.Object.Key);
 
         var imageType = System.IO.Path.GetExtension(fileKey).Replace(".", "").ToLower();
         logger.LogLine($"Image type: " + imageType);
@@ -307,13 +312,10 @@ namespace PhotoAlbum
             logger.LogLine($"Uploaded file: {evnt.Records[0].S3.Object.Key}.  Unsupported image type: ${imageType}.  No thumbnail created.");
             return;
         }
-       //ImageFormat imageFormat = ImageFormat.Png; 
-       //i/f (imageType == "jpg")
-       //   imageFormat = ImageFormat.Jpeg;
 
        logger.LogLine($"Getting s3client");
         var s3Client = new AmazonS3Client(Amazon.RegionEndpoint.EUWest2);
-       logger.LogLine($"try GetObjectAsync");
+       logger.LogLine($"try GetObjectAsync: srcBucket [{srcBucket}], fileKey [{fileKey}]");
         var origimage = await s3Client.GetObjectAsync(srcBucket, fileKey);
         logger.LogLine($"GetObjectAsync: {origimage.BucketName}/{origimage.Key} successful");
 
@@ -342,7 +344,7 @@ namespace PhotoAlbum
 
                   putRequest.BucketName = dstBucket;
                   putRequest.ContentType = "image/" + imageType;
-                  putRequest.Key = evnt.Records[0].S3.Object.Key;
+                  putRequest.Key = fileKey;
                   putRequest.InputStream = outStream;
 
                   await s3Client.PutObjectAsync(putRequest);
