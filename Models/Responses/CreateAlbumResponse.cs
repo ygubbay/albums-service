@@ -6,6 +6,8 @@ namespace PhotoAlbum.Models.Responses
     {
         public bool IsSuccess {get;set;}
         public string ErrorMessage {get;set;}
+
+        public string PartitionKey {get;set;}
     }
 
 }

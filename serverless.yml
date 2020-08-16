@@ -48,9 +48,8 @@ provider:
       Resource: "*"
     - Effect: "Allow"
       Action: 
-       - "lambda:RemovePermission"
-      Resource: 
-        - !Sub "arn:aws:lambda:eu-west-2:327044483855:function:albums-service-dev*"
+       - lambda:RemovePermission
+      Resource: "*"
 # you can overwrite defaults here
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'eu-west-2'}
@@ -115,6 +114,28 @@ functions:
             allowCredentials: true
           authorizer:
             type: aws_iam
+  getPhotos:
+    handler: CsharpHandlers::PhotoAlbum.Functions::GetPhotos
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: AlbumsTable
+    environment:
+      tableName: ${self:custom.albumsTable}
+    events: 
+      - http:
+          method: GET
+          path: /uploads/{PartitionKey}
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam            
   addUpload:
     handler: CsharpHandlers::PhotoAlbum.Functions::AddUpload
     package:
@@ -132,7 +153,7 @@ functions:
     events: 
       - http:
           method: POST
-          path: /albums/uploads
+          path: /uploads
           cors:
             origins: '*'
             allowCredentials: true
@@ -168,7 +189,7 @@ functions:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
 
   autothumbnail:
-    handler: CsharpHandlers::PhotoAlbum.Functions::CreateThumbnail
+    handler: CsharpHandlers::PhotoAlbum.Functions::AutoThumbnail
     package:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
     iamRoleStatements:
@@ -213,35 +234,29 @@ resources:
         ResponseType: DEFAULT_5XX
         RestApiId:
           Ref: 'ApiGatewayRestApi'
-    AlbumsTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${self:custom.albumsTable}
-        AttributeDefinitions:
-          - AttributeName: partition_key
-            AttributeType: S
-          - AttributeName: sort_key
-            AttributeType: S
-        KeySchema:
-          - AttributeName: partition_key
-            KeyType: HASH
-          - AttributeName: sort_key
-            KeyType: RANGE
-        # Set the capacity to auto-scale
-        BillingMode: PAY_PER_REQUEST
-        GlobalSecondaryIndexes:
-        - IndexName: gsiAlbums
-          KeySchema:
-          - AttributeName: sort_key
-            KeyType: HASH
-          - AttributeName: partition_key
-            KeyType: RANGE
-          Projection:
-            ProjectionType: 'ALL'
-
-Outputs:
-  AlbumsTableName:
-    Value:
-      Ref: AlbumsTable
-    Export:
-      Name: albums-table-ext
+#    AlbumsTable:
+#      Type: AWS::DynamoDB::Table
+#      DeletionPolicy: Retain
+#      Properties:
+#        TableName: ${self:custom.albumsTable}
+#        AttributeDefinitions:
+#          - AttributeName: partition_key
+#            AttributeType: S
+#          - AttributeName: sort_key
+#            AttributeType: S
+#        KeySchema:
+#          - AttributeName: partition_key
+#            KeyType: HASH
+#          - AttributeName: sort_key
+#            KeyType: RANGE
+#        # Set the capacity to auto-scale
+#        BillingMode: PAY_PER_REQUEST
+#        GlobalSecondaryIndexes:
+#        - IndexName: gsiAlbums
+#          KeySchema:
+#          - AttributeName: sort_key
+#            KeyType: HASH
+#          - AttributeName: partition_key
+#            KeyType: RANGE
+#          Projection:
+#            ProjectionType: 'ALL'

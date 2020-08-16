@@ -20,6 +20,7 @@ using System.Linq;
 using Amazon.Runtime;
 using Amazon.DynamoDBv2.Model;
 using System.Web;
+using PhotoAlbum.Models;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -137,6 +138,85 @@ namespace PhotoAlbum
 
 
 
+       public async Task<APIGatewayProxyResponse> GetPhotos(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+
+          var album_key = req.PathParameters["PartitionKey"];
+
+         var client = new AmazonDynamoDBClient();
+
+         var conditions = new Dictionary<string, Condition> { 
+
+           // Hash key condition
+           {
+             "partition_key",
+             new Condition { ComparisonOperator = "EQ", 
+                             AttributeValueList = new List<AttributeValue> { new AttributeValue { S = album_key } }
+             }
+           },
+
+           // Range key condition
+               {
+                    "sort_key", // Reference the correct range key when using indexes
+                    new Condition { 
+                      ComparisonOperator = "BEGINS_WITH",
+                          AttributeValueList = new List<AttributeValue>
+                          {
+                              new AttributeValue { S = "upload" }
+                          }
+                    }
+                }
+         };
+
+          
+
+         var db_request = new QueryRequest
+          {
+              TableName = albumsTablename,
+              KeyConditions = conditions
+          };
+
+          List<Photo> photos = new List<Photo>();
+
+          var result = await client.QueryAsync(db_request);
+          logger.LogLine($"album results: [{result.Items?.Count}]");
+
+          result.Items.ForEach((ph) => {
+
+            var photo = new Photo {
+               PartitionKey = ph["partition_key"].S,
+               SortKey = ph["sort_key"].S,
+               DateCreated = ph["datecreated"].S,
+               Filename = ph["filename"].S,
+               LastModifiedDate = ph["last_modified_date"].S,
+               OriginalFilename = ph["original_filename"].S,
+               Size = Convert.ToDouble(ph["size"].N),
+               Type = ph["type"].S,
+            };
+            photos.Add(photo);
+          });
+         
+      
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(photos)
+          };
+          
+
+      }
+
+
+
 
        public async Task<APIGatewayProxyResponse> CreateAlbum(APIGatewayProxyRequest req, ILambdaContext context)
        {
@@ -169,7 +249,8 @@ namespace PhotoAlbum
           var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
 
-          item["partition_key"] = $"{request.Year}_{id}";
+          var partition_key = $"{request.Year}_{id}"
+          item["partition_key"] = partition_key;
           item["sort_key"] = $"alb";
           item["id"] = id;
           item["year"] = request.Year;
@@ -188,8 +269,12 @@ namespace PhotoAlbum
                 { "Access-Control-Allow-Origin", "*"},
                 { "Access-Control-Allow-Credentials", "true" } },
               Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, 
-              Name = request.Name, Owner = request.Owner,
-              Year = request.Year, DateCreated = datecreated, IsSuccess = true })
+              Name = request.Name, 
+              Owner = request.Owner,
+              Year = request.Year, 
+              DateCreated = datecreated,
+              PartitionKey = partition_key, 
+              IsSuccess = true })
             } ;
           }
           catch (Exception ee)
@@ -294,7 +379,7 @@ namespace PhotoAlbum
          return new CreatePhotoResponse { Id = id };
        }
 
-       public async Task CreateThumbnail(S3Event evnt, ILambdaContext context)
+       public async Task AutoThumbnail(S3Event evnt, ILambdaContext context)
        {
           var logger = context.Logger;
 
