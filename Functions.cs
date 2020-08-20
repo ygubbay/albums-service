@@ -194,7 +194,7 @@ namespace PhotoAlbum
                SortKey = ph["sort_key"].S,
                DateCreated = ph["datecreated"].S,
                Filename = ph["filename"].S,
-               LastModifiedDate = ph["last_modified_date"].S,
+               LastModifiedDate = !ph.ContainsKey("last_modified_date") ? "": ph["last_modified_date"].S,
                OriginalFilename = ph["original_filename"].S,
                Size = Convert.ToDouble(ph["size"].N),
                Type = ph["type"].S,
@@ -249,7 +249,7 @@ namespace PhotoAlbum
           var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
 
-          var partition_key = $"{request.Year}_{id}"
+          var partition_key = $"{request.Year}_{id}";
           item["partition_key"] = partition_key;
           item["sort_key"] = $"alb";
           item["id"] = id;
@@ -342,6 +342,79 @@ namespace PhotoAlbum
             } ;
           }
       }
+
+/*
+      public async Task DeleteAlbum(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
+          var partition_key = req.PathParameters["PartitionKey"];
+
+          // First delete the s3 objects
+          //https://stackoverflow.com/questions/33017858/delete-a-folder-from-amazon-s3-using-api/37286244
+          AmazonS3Client s3Client = new AmazonS3Client();
+          S3DirectoryInfo directoryToDelete = new S3DirectoryInfo(s3Client, bucketName, "your folder name or full folder key");
+          directoryToDelete.Delete(true); // true will delete recursively in folder inside
+
+
+          // Now delete the dynamodb documents
+          try {
+
+          
+          
+         var client = new AmazonDynamoDBClient();
+
+         var key = new Dictionary<string, AttributeValue>
+          {
+              { "partition_key", new AttributeValue { S = partition_key } },
+              { "Title", new AttributeValue { S = "The Adventures of Tom Sawyer" } }
+          };
+
+          var deleteRequest = new DeleteItemRequest {
+              TableName = albumsTablename,
+              Key = key
+          };
+
+         await client.DeleteItemAsync(deleteRequest);
+          var table = Table.LoadTable(client, albumsTablename);
+          var item = new Document();
+
+          var id = Guid.NewGuid();
+          var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
+
+          
+          logger.LogLine("Album created");
+         return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, 
+              Name = request.Name, 
+              Owner = request.Owner,
+              Year = request.Year, 
+              DateCreated = datecreated,
+              PartitionKey = partition_key, 
+              IsSuccess = true })
+            } ;
+          }
+          catch (Exception ee)
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 500,
+              Body = ee.ToString()
+            } ;
+          }
+      }*/
 
        public async Task<CreatePhotoResponse> CreatePhoto(CreatePhotoRequest request, ILambdaContext context)
        {
