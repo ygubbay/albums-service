@@ -221,17 +221,9 @@ namespace PhotoAlbum
       }
 
 
-       public async Task<APIGatewayProxyResponse> GetPhotos(APIGatewayProxyRequest req, ILambdaContext context)
+
+      private async Task<List<Photo>> GetAlbumDocs(string albums_table, string album_key, bool include_album_doc = false)
       {
-        var logger = context.Logger;
-
-          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
-          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
-
-          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
-
-          var album_key = req.PathParameters["PartitionKey"];
-
          var client = new AmazonDynamoDBClient();
 
          var conditions = new Dictionary<string, Condition> { 
@@ -242,33 +234,36 @@ namespace PhotoAlbum
              new Condition { ComparisonOperator = "EQ", 
                              AttributeValueList = new List<AttributeValue> { new AttributeValue { S = album_key } }
              }
-           },
-
-           // Range key condition
-               {
-                    "sort_key", // Reference the correct range key when using indexes
-                    new Condition { 
-                      ComparisonOperator = "BEGINS_WITH",
-                          AttributeValueList = new List<AttributeValue>
-                          {
-                              new AttributeValue { S = "upload" }
-                          }
-                    }
-                }
+           }
          };
+
+         if (!include_album_doc)
+         {
+            // Range key condition
+            conditions.Add(
+                "sort_key", // Reference the correct range key when using indexes
+                new Condition { 
+                  ComparisonOperator = "BEGINS_WITH",
+                      AttributeValueList = new List<AttributeValue>
+                      {
+                          new AttributeValue { S = "upload" }
+                      }
+                }
+            );
+         }
 
           
 
          var db_request = new QueryRequest
           {
-              TableName = albumsTablename,
+              TableName = albums_table,
               KeyConditions = conditions
           };
 
           List<Photo> photos = new List<Photo>();
 
           var result = await client.QueryAsync(db_request);
-          logger.LogLine($"album results: [{result.Items?.Count}]");
+          Console.WriteLine($"album docs: [{result.Items?.Count}]");
 
           result.Items.ForEach((ph) => {
 
@@ -276,14 +271,30 @@ namespace PhotoAlbum
                PartitionKey = ph["partition_key"].S,
                SortKey = ph["sort_key"].S,
                DateCreated = ph["datecreated"].S,
-               Filename = ph["filename"].S,
+               Filename = ph.ContainsKey("filename") ? ph["filename"].S: "",
                LastModifiedDate = !ph.ContainsKey("last_modified_date") ? "": ph["last_modified_date"].S,
-               OriginalFilename = ph["original_filename"].S,
-               Size = Convert.ToDouble(ph["size"].N),
-               Type = ph["type"].S,
+               OriginalFilename = !ph.ContainsKey("original_filename") ? "":ph["original_filename"].S,
+               Size = !ph.ContainsKey("size") ? 0:Convert.ToDouble(ph["size"].N),
+               Type = !ph.ContainsKey("type") ? "":ph["type"].S,
             };
             photos.Add(photo);
           });
+
+          return photos;
+      }
+
+      public async Task<APIGatewayProxyResponse> GetPhotos(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+
+          var album_key = req.PathParameters["PartitionKey"];
+
+          var photos = await GetAlbumDocs(albumsTablename, album_key);
          
       
           return new APIGatewayProxyResponse {
@@ -316,7 +327,7 @@ namespace PhotoAlbum
           {
             return new APIGatewayProxyResponse {
                 
-              StatusCode = 200,
+              StatusCode = 400,
               Body = JsonConvert.SerializeObject(new CreateAlbumResponse { IsSuccess = false, ErrorMessage = $"Request has some missing parameters. request [JsonConvert.SerializeObject(request)]"})
             } ;
           }
@@ -444,98 +455,50 @@ namespace PhotoAlbum
           logger.LogLine($"DeleteAlbum: {partition_key}, photosBucket {photosBucket}, thumbnailsBucket {thumbnailsBucket}");
 
           // Get key of the album folder
-          var s3_folder_key = $"public\\{partition_key.Substring(0, 4)}\\{partition_key.Substring(5)}";
-
-          var thumbsBucketList = new ListObjectsRequest { BucketName = thumbnailsBucket, Prefix = s3_folder_key };           
-
+          var s3_folder_key = $"public/{partition_key.Substring(0, 4)}/{partition_key.Substring(5)}/";
 
           await Deletes3Folder(photosBucket, s3_folder_key);
           await Deletes3Folder(thumbnailsBucket, s3_folder_key);
 
+          // Now delete the dynamodb documents
+          var photos = await GetAlbumDocs(albumsTablename, partition_key, true);
 
-          // Get the uploads from database table
           var client = new AmazonDynamoDBClient();
 
-          var conditions = new Dictionary<string, Condition> { 
+          
+          List<Task> listOfTasks = new List<Task>();
+          photos.ForEach(ph => {
 
-            // Hash key condition
-            {
-              "partition_key",
-              new Condition { ComparisonOperator = "EQ", 
-                              AttributeValueList = new List<AttributeValue> { new AttributeValue { S = partition_key } }
-              }
-            }
-          };
-
-          var db_request = new QueryRequest
-          {
-              TableName = albumsTablename,
-              KeyConditions = conditions
-          };
-
-         
-          List<Photo> photos = new List<Photo>();
-          var result = await client.QueryAsync(db_request);
-
-          result.Items.ForEach((ph) => {
-
-            var photo = DbToPhoto(ph);
-            photos.Add(photo);
+              var delRequest = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", ph.SortKey);
+              listOfTasks.Add(client.DeleteItemAsync(delRequest));            
           });
 
-          logger.LogLine("delete photos list:");
-          logger.LogLine(JsonConvert.SerializeObject(photos));
+          await Task.WhenAll(listOfTasks);
 
-
-          // First delete the s3 objects
-          //https://stackoverflow.com/questions/33017858/delete-a-folder-from-amazon-s3-using-api/37286244
-        /*  AmazonS3Client s3Client = new AmazonS3Client();
-          S3DirectoryInfo directoryToDelete = new S3DirectoryInfo(s3Client, bucketName, "your folder name or full folder key");
-          directoryToDelete.Delete(true); // true will delete recursively in folder inside
-
-
-          // Now delete the dynamodb documents
-          try {
-
-          
-          
-         var client = new AmazonDynamoDBClient();
-
-         var key = new Dictionary<string, AttributeValue>
-          {
-              { "partition_key", new AttributeValue { S = partition_key } },
-              { "Title", new AttributeValue { S = "The Adventures of Tom Sawyer" } }
-          };
-
-          var deleteRequest = new DeleteItemRequest {
-              TableName = albumsTablename,
-              Key = key
-          };*/
-
-          //await client.DeleteItemAsync(deleteRequest);
-          var table = Table.LoadTable(client, albumsTablename);
-          var item = new Document();
-
-          var id = Guid.NewGuid();
-          var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
-                                            CultureInfo.InvariantCulture);
-
-          
-          logger.LogLine("Album created");
-         return new APIGatewayProxyResponse {
+          logger.LogLine("DeleteAlbum completed");
+          return new APIGatewayProxyResponse {
                 
               StatusCode = 200,
               Headers = new Dictionary<string, string> () { 
                 { "Access-Control-Allow-Origin", "*"},
                 { "Access-Control-Allow-Credentials", "true" } },
-              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { Id = id, 
-             
-              DateCreated = datecreated,
-              PartitionKey = partition_key, 
-              IsSuccess = true })
-            } ;
-          }
+              Body = JsonConvert.SerializeObject(new DeleteAlbumResponse { IsSuccess = false, ErrorMessage = "", PartitionKey = partition_key })
+          };
+      }
           
+      private DeleteItemRequest GetDeleteDbRequest(string albums_table, string partition_key, string attr_key, string attr_value)
+      {
+          var key = new Dictionary<string, AttributeValue>
+          {
+              { "partition_key", new AttributeValue { S = partition_key } },
+              { attr_key, new AttributeValue { S = attr_value } }
+          };
+          return new DeleteItemRequest {
+
+              TableName = albums_table,
+              Key = key
+          };
+      }
       
       private async Task Deletes3Folder(string bucket_name, string key_name)
       {
@@ -555,14 +518,18 @@ namespace PhotoAlbum
           var files = s3Objects.S3Objects.Select(x => x.Key);
           Console.WriteLine($"s3Objects files: {JsonConvert.SerializeObject(files)}");
           
-          files.ToList().ForEach(x => {
+          if (files.Count() > 0) {
+            files.ToList().ForEach(x => {
 
-            deleteFilesRequest.AddKey(x);
-            Console.WriteLine($"AddKey for delete: {x}");
-          });
-          var delFilesResponse = await s3Client.DeleteObjectsAsync(deleteFilesRequest);
-          Console.WriteLine($"Delete files: Count {JsonConvert.SerializeObject(delFilesResponse)}");
-          
+              deleteFilesRequest.AddKey(x);
+              Console.WriteLine($"AddKey for delete: {x}");
+            });
+            var delFilesResponse = await s3Client.DeleteObjectsAsync(deleteFilesRequest);
+            Console.WriteLine($"Delete files: Count {JsonConvert.SerializeObject(delFilesResponse)}");
+          }
+          else {
+            Console.WriteLine($"No files in folder: bucket_name [{bucket_name}], key_name [{key_name}]");
+          }
 
           // delete the folder
           var multiObjectDeleteRequest = new DeleteObjectsRequest { 
@@ -572,6 +539,7 @@ namespace PhotoAlbum
 
           var response = await s3Client.DeleteObjectsAsync(multiObjectDeleteRequest);
           Console.WriteLine("Remove folder: {0} items", response.DeletedObjects.Count);
+          
            
         }
       
