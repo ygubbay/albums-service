@@ -26,6 +26,9 @@ provider:
   runtime: dotnetcore2.1
   environment:
     ALBUMS_TABLE: ${self:custom.albumsTable}
+    PHOTOS_BUCKET: ${self:custom.PHOTO_ALBUMS_BUCKET}
+    THUMBNAILS_BUCKET: ${self:custom.PHOTO_THUMBNAILS_BUCKET}
+    
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -187,6 +190,33 @@ functions:
     handler: CsharpHandlers::PhotoAlbum.Functions::Hello
     package:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
+
+  deleteAlbum:
+    handler: CsharpHandlers::PhotoAlbum.Functions::DeleteAlbum
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: AlbumsTable
+      - Effect: "Allow"
+        Action:
+            - "s3:*"
+        Resource: "*"
+    environment:
+      tableName: ${self:custom.albumsTable}
+    events: 
+      - http:
+          method: DELETE
+          path: /albums/{PartitionKey}
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
 
   autothumbnail:
     handler: CsharpHandlers::PhotoAlbum.Functions::AutoThumbnail
