@@ -13,6 +13,7 @@ namespace PhotoAlbum.Models
         public string OriginalFilename {get;set;}
         public double Size { get;set;}
         public string Type {get;set;}
+        public string Owner {get;set;}
     }
 
 }

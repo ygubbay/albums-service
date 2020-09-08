@@ -28,6 +28,7 @@ provider:
     ALBUMS_TABLE: ${self:custom.albumsTable}
     PHOTOS_BUCKET: ${self:custom.PHOTO_ALBUMS_BUCKET}
     THUMBNAILS_BUCKET: ${self:custom.PHOTO_THUMBNAILS_BUCKET}
+    ARCHIVE_TABLE: ${self:custom.archiveTable}
     
   iamRoleStatements:
     - Effect: Allow
@@ -69,6 +70,7 @@ custom:
   PHOTO_ALBUMS_BUCKET: ygubbay-photo-albums
   PHOTO_THUMBNAILS_BUCKET: ygubbay-photo-albums-thumbnails
   albumsTable: albums-table-${self:provider.stage}
+  archiveTable: albums-archive-${self:provider.stage}
 
 functions:
 
@@ -106,6 +108,14 @@ functions:
         # Restrict our IAM role permissions to
         # the specific table for the stage
         Resource: AlbumsTable
+      - Effect: Allow
+        Action:
+        - kms:Encrypt
+        - kms:Decrypt
+        - kms:ReEncrypt*
+        - kms:GenerateDataKey*
+        - kms:DescribeKey
+        Resource: "*"
     environment:
       tableName: ${self:custom.albumsTable}
     events: 
@@ -191,6 +201,28 @@ functions:
     package:
       artifact: bin\release\netcoreapp2.1\deploy-package.zip
 
+  archiveAlbum:
+    handler: CsharpHandlers::PhotoAlbum.Functions::ArchiveAlbum
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: ArchiveTable
+    environment:
+      tableName: ${self:custom.albumsTable}
+    events: 
+      - http:
+          method: PUT
+          path: /albums/archive/{PartitionKey}
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam     
   deleteAlbum:
     handler: CsharpHandlers::PhotoAlbum.Functions::DeleteAlbum
     package:
@@ -264,29 +296,20 @@ resources:
         ResponseType: DEFAULT_5XX
         RestApiId:
           Ref: 'ApiGatewayRestApi'
-#    AlbumsTable:
-#      Type: AWS::DynamoDB::Table
-#      DeletionPolicy: Retain
-#      Properties:
-#        TableName: ${self:custom.albumsTable}
-#        AttributeDefinitions:
-#          - AttributeName: partition_key
-#            AttributeType: S
-#          - AttributeName: sort_key
-#            AttributeType: S
-#        KeySchema:
-#          - AttributeName: partition_key
-#            KeyType: HASH
-#          - AttributeName: sort_key
-#            KeyType: RANGE
-#        # Set the capacity to auto-scale
-#        BillingMode: PAY_PER_REQUEST
-#        GlobalSecondaryIndexes:
-#        - IndexName: gsiAlbums
-#          KeySchema:
-#          - AttributeName: sort_key
-#            KeyType: HASH
-#          - AttributeName: partition_key
-#            KeyType: RANGE
-#          Projection:
-#            ProjectionType: 'ALL'
+    ArchiveAlbumsTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: ${self:custom.archiveTable}
+        AttributeDefinitions:
+          - AttributeName: partition_key
+            AttributeType: S
+          - AttributeName: sort_key
+            AttributeType: S
+        KeySchema:
+          - AttributeName: partition_key
+            KeyType: HASH
+          - AttributeName: sort_key
+            KeyType: RANGE
+        # Set the capacity to auto-scale
+        BillingMode: PAY_PER_REQUEST

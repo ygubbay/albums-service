@@ -101,9 +101,11 @@ namespace PhotoAlbum
          var db_request = new QueryRequest
           {
               TableName = albumsTablename,
-              KeyConditionExpression = "partition_key = :v_Id",
+              KeyConditionExpression = "partition_key = :v_Id AND sort_key = :alb",
               ExpressionAttributeValues = new Dictionary<string, AttributeValue> {
-                  {":v_Id", new AttributeValue { S = partition_key }}}
+                  {":v_Id", new AttributeValue { S = partition_key }},
+                  {":alb", new AttributeValue { S = "alb" }}
+              }
           };
 
           Album album;
@@ -222,7 +224,7 @@ namespace PhotoAlbum
 
 
 
-      private async Task<List<Photo>> GetAlbumDocs(string albums_table, string album_key, bool include_album_doc = false)
+      private async Task<AlbumFull> GetAlbumFull(string albums_table, string album_key)
       {
          var client = new AmazonDynamoDBClient();
 
@@ -237,50 +239,47 @@ namespace PhotoAlbum
            }
          };
 
-         if (!include_album_doc)
-         {
-            // Range key condition
-            conditions.Add(
-                "sort_key", // Reference the correct range key when using indexes
-                new Condition { 
-                  ComparisonOperator = "BEGINS_WITH",
-                      AttributeValueList = new List<AttributeValue>
-                      {
-                          new AttributeValue { S = "upload" }
-                      }
-                }
-            );
-         }
-
-          
-
          var db_request = new QueryRequest
           {
               TableName = albums_table,
               KeyConditions = conditions
           };
 
-          List<Photo> photos = new List<Photo>();
+          AlbumFull album = new AlbumFull { Photos = new List<Photo>() };
+          
 
           var result = await client.QueryAsync(db_request);
           Console.WriteLine($"album docs: [{result.Items?.Count}]");
 
           result.Items.ForEach((ph) => {
 
-            var photo = new Photo {
-               PartitionKey = ph["partition_key"].S,
-               SortKey = ph["sort_key"].S,
-               DateCreated = ph["datecreated"].S,
-               Filename = ph.ContainsKey("filename") ? ph["filename"].S: "",
-               LastModifiedDate = !ph.ContainsKey("last_modified_date") ? "": ph["last_modified_date"].S,
-               OriginalFilename = !ph.ContainsKey("original_filename") ? "":ph["original_filename"].S,
-               Size = !ph.ContainsKey("size") ? 0:Convert.ToDouble(ph["size"].N),
-               Type = !ph.ContainsKey("type") ? "":ph["type"].S,
-            };
-            photos.Add(photo);
+            if (ph["sort_key"].S == "alb")
+            {
+              album.Album = new Album { Name = ph["name"].S, 
+                                Owner = ph["owner"].S,
+                                Year = Convert.ToInt32(ph["year"].N),
+                                Id = new Guid(ph["id"].S),
+                                DateCreated = ph["datecreated"].S };
+            }
+            else {
+              var photo = new Photo {
+                            PartitionKey = ph["partition_key"].S,
+                            SortKey = ph["sort_key"].S,
+                            DateCreated = ph["datecreated"].S,
+                            Filename = ph.ContainsKey("filename") ? ph["filename"].S: "",
+                            LastModifiedDate = !ph.ContainsKey("last_modified_date") ? "": ph["last_modified_date"].S,
+                            OriginalFilename = !ph.ContainsKey("original_filename") ? "":ph["original_filename"].S,
+                            Size = !ph.ContainsKey("size") ? 0:Convert.ToDouble(ph["size"].N),
+                            Type = !ph.ContainsKey("type") ? "":ph["type"].S,
+                          };
+
+              album.Photos.Add(photo);
+            }
+            
+            
           });
 
-          return photos;
+          return album;
       }
 
       public async Task<APIGatewayProxyResponse> GetPhotos(APIGatewayProxyRequest req, ILambdaContext context)
@@ -294,7 +293,7 @@ namespace PhotoAlbum
 
           var album_key = req.PathParameters["PartitionKey"];
 
-          var photos = await GetAlbumDocs(albumsTablename, album_key);
+          var fullAlbum = await GetAlbumFull(albumsTablename, album_key);
          
       
           return new APIGatewayProxyResponse {
@@ -303,7 +302,7 @@ namespace PhotoAlbum
               Headers = new Dictionary<string, string> () { 
                 { "Access-Control-Allow-Origin", "*"},
                 { "Access-Control-Allow-Credentials", "true" } },
-              Body = JsonConvert.SerializeObject(photos)
+              Body = JsonConvert.SerializeObject(fullAlbum.Photos)
           };
           
 
@@ -398,21 +397,9 @@ namespace PhotoAlbum
 
             var client = new AmazonDynamoDBClient();
             var table = Table.LoadTable(client, albumsTablename);
-            var item = new Document();
+            var datecreated = DateTime.UtcNow;
 
-            var id = Guid.NewGuid();
-            var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
-                                              CultureInfo.InvariantCulture);
-
-            item["partition_key"] = request.AlbumKey;
-            item["sort_key"] = $"upload_{request.OriginalFilename}" ;
-            item["filename"] = request.Filename;
-            item["original_filename"] = request.OriginalFilename;
-            item["last_modified_date"] = request.LastModifiedDate;
-            item["owner"] = request.Owner;
-            item["size"] = request.Size;
-            item["type"] = request.Type;
-            item["datecreated"] = datecreated;
+            var item = CreateUploadItem(request, datecreated);
 
             logger.LogLine("Saving doc");
             await table.PutItemAsync(item);
@@ -436,6 +423,111 @@ namespace PhotoAlbum
             } ;
           }
       }
+
+      private Document CreateUploadItem(AddUploadRequest request, DateTime date_created)
+      {
+            var item = new Document();
+            
+            item["partition_key"] = request.AlbumKey;
+            item["sort_key"] = $"upload_{request.OriginalFilename}" ;
+            item["filename"] = request.Filename;
+            item["original_filename"] = request.OriginalFilename;
+            item["last_modified_date"] = request.LastModifiedDate;
+            item["owner"] = request.Owner;
+            item["size"] = request.Size;
+            item["type"] = request.Type;
+            item["datecreated"] = date_created.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                                          CultureInfo.InvariantCulture);
+
+            return item;
+      }
+
+
+      private Document CreateUploadItem(Photo photo)
+      {
+            var item = new Document();
+            
+            item["partition_key"] = photo.PartitionKey;
+            item["sort_key"] = photo.SortKey;
+            item["filename"] = photo.Filename;
+            item["original_filename"] = photo.OriginalFilename;
+            item["last_modified_date"] = photo.LastModifiedDate;
+            item["owner"] = photo.Owner;
+            item["size"] = photo.Size;
+            item["type"] = photo.Type;
+            item["datecreated"] = photo.DateCreated;
+
+            return item;
+      }
+
+      private Document CreateAlbumItem(Album album)
+      {
+          var item = new Document();
+          
+          item["partition_key"] = album.Partition_Key;
+          item["sort_key"] = "alb";
+          item["owner"] = album.Owner;
+          item["year"] = album.Year;
+          item["id"] = album.Id;
+          item["name"] = album.Name;
+          item["datecreated"] = album.DateCreated;
+
+          return item;
+      }
+
+      public async Task<APIGatewayProxyResponse> ArchiveAlbum(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          var archiveTable = Environment.GetEnvironmentVariable("ARCHIVE_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}, archiveTable {archiveTable}");
+
+          var partition_key = req.PathParameters["PartitionKey"];
+          logger.LogLine($"ArchiveAlbum: PartitionKey [{partition_key}]");
+
+
+          // Get existing dynamodb docs for this album
+          var fullAlbum = await GetAlbumFull(albumsTablename, partition_key);
+          var client = new AmazonDynamoDBClient();
+          var table = Table.LoadTable(client, archiveTable);
+
+          // Create dynamodb docs in Archive table
+          List<Task> createTasks = new List<Task>();
+          fullAlbum.Photos.ForEach(ph => {
+
+                var doc = CreateUploadItem(ph);
+                createTasks.Add(table.PutItemAsync(doc));            
+          });
+          var albumItem = CreateAlbumItem(fullAlbum.Album);
+          createTasks.Add(table.PutItemAsync(albumItem));
+          await Task.WhenAll(createTasks);
+
+          // Now delete the dynamodb documents
+          List<Task> listOfTasks = new List<Task>();
+          fullAlbum.Photos.ForEach(ph => {
+
+              var delRequest = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", ph.SortKey);
+              listOfTasks.Add(client.DeleteItemAsync(delRequest));            
+          });
+          var delAReq = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", "alb");
+          listOfTasks.Add(client.DeleteItemAsync(delAReq));
+          await Task.WhenAll(listOfTasks);
+
+          logger.LogLine("Archive album completed");
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new DeleteAlbumResponse { IsSuccess = true, ErrorMessage = "", PartitionKey = partition_key })
+          };
+      }
+          
 
 
       public async Task<APIGatewayProxyResponse> DeleteAlbum(APIGatewayProxyRequest req, ILambdaContext context)
@@ -461,17 +553,19 @@ namespace PhotoAlbum
           await Deletes3Folder(thumbnailsBucket, s3_folder_key);
 
           // Now delete the dynamodb documents
-          var photos = await GetAlbumDocs(albumsTablename, partition_key, true);
+          var fullAlbum = await GetAlbumFull(albumsTablename, partition_key);
 
           var client = new AmazonDynamoDBClient();
 
           
           List<Task> listOfTasks = new List<Task>();
-          photos.ForEach(ph => {
+          fullAlbum.Photos.ForEach(ph => {
 
               var delRequest = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", ph.SortKey);
               listOfTasks.Add(client.DeleteItemAsync(delRequest));            
           });
+          var delCovReq = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", "alb");
+          listOfTasks.Add(client.DeleteItemAsync(delCovReq));
 
           await Task.WhenAll(listOfTasks);
 
