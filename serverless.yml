@@ -96,6 +96,26 @@ functions:
             allowCredentials: true
           authorizer:
             type: aws_iam   
+  getArchiveAlbums:
+    handler: CsharpHandlers::PhotoAlbum.Functions::GetArchiveAlbums
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+        - "dynamodb:*"
+        # Restrict our IAM role permissions to
+        # the specific table for the stage
+        Resource: AlbumsTable
+    events: 
+      - http:
+          method: GET
+          path: /albums/archive
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
 
   getAlbum:
     handler: CsharpHandlers::PhotoAlbum.Functions::GetAlbum
@@ -313,3 +333,12 @@ resources:
             KeyType: RANGE
         # Set the capacity to auto-scale
         BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+        - IndexName: gsiAlbums
+          KeySchema:
+          - AttributeName: sort_key
+            KeyType: HASH
+          - AttributeName: partition_key
+            KeyType: RANGE
+          Projection:
+            ProjectionType: 'ALL'        

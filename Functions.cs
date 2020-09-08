@@ -84,6 +84,56 @@ namespace PhotoAlbum
           };
       }
 
+
+      public async Task<APIGatewayProxyResponse> GetArchiveAlbums(APIGatewayProxyRequest request, ILambdaContext context)
+      {
+        var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(request)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var archiveTablename = Environment.GetEnvironmentVariable("ARCHIVE_TABLE");
+          
+          logger.LogLine($"archiveTablename {archiveTablename}");
+
+          
+          var client = new AmazonDynamoDBClient();
+          var table = Table.LoadTable(client, archiveTablename);
+
+          var db_request = new QueryRequest
+          {
+              TableName = archiveTablename,
+              IndexName = "gsiAlbums",
+              KeyConditionExpression = "sort_key = :v_Id",
+              ExpressionAttributeValues = new Dictionary<string, AttributeValue> {
+                  {":v_Id", new AttributeValue { S = "alb" }}}
+          };
+
+          var albumList = new List<ArchiveAlbum>();
+          var result = await client.QueryAsync(db_request);
+
+          result.Items.ForEach(item => {
+
+              var album = new ArchiveAlbum { Name = item["name"].S, 
+                                Owner = item["owner"].S,
+                                Year = Convert.ToInt32(item["year"].N),
+                                Id = new Guid(item["id"].S),
+                                DateCreated = item["datecreated"].S,
+                                DateArchived = item["date_archived"].S }; 
+              albumList.Add(album);
+
+          });
+
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(albumList)
+          };
+      }
+
       public async Task<APIGatewayProxyResponse> GetAlbum(APIGatewayProxyRequest req, ILambdaContext context)
       {
         var logger = context.Logger;
@@ -503,6 +553,8 @@ namespace PhotoAlbum
                 createTasks.Add(table.PutItemAsync(doc));            
           });
           var albumItem = CreateAlbumItem(fullAlbum.Album);
+          albumItem["date_archived"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
           createTasks.Add(table.PutItemAsync(albumItem));
           await Task.WhenAll(createTasks);
 
@@ -737,12 +789,6 @@ namespace PhotoAlbum
  
     }
 
-    public class LambdaRequest
-    {
-
-      public string body { get; set; }
-
-    }
     public class Response
     {
       public string Message {get; set;}
@@ -766,6 +812,4 @@ namespace PhotoAlbum
         Key3 = key3;
       }
     }
-
-    
 }
