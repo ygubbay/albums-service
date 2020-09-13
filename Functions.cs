@@ -580,7 +580,61 @@ namespace PhotoAlbum
           };
       }
           
+      public async Task<APIGatewayProxyResponse> RestoreAlbum(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+        var logger = context.Logger;
 
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          var archiveTable = Environment.GetEnvironmentVariable("ARCHIVE_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}, archiveTable {archiveTable}");
+
+          var partition_key = req.PathParameters["PartitionKey"];
+          logger.LogLine($"RestoreAlbum: PartitionKey [{partition_key}]");
+
+
+          // Get existing dynamodb docs from the archive
+          var fullAlbum = await GetAlbumFull(archiveTable, partition_key);
+          var client = new AmazonDynamoDBClient();
+          var table = Table.LoadTable(client, albumsTablename);
+
+          // Create dynamodb docs in Upload items table
+          List<Task> createTasks = new List<Task>();
+          fullAlbum.Photos.ForEach(ph => {
+
+                var doc = CreateUploadItem(ph);
+                createTasks.Add(table.PutItemAsync(doc));            
+          });
+          var albumItem = CreateAlbumItem(fullAlbum.Album);
+          albumItem["date_archived"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
+          createTasks.Add(table.PutItemAsync(albumItem));
+          await Task.WhenAll(createTasks);
+
+          // Now delete the dynamodb documents
+          List<Task> listOfTasks = new List<Task>();
+          fullAlbum.Photos.ForEach(ph => {
+
+              var delRequest = GetDeleteDbRequest(archiveTable, partition_key, "sort_key", ph.SortKey);
+              listOfTasks.Add(client.DeleteItemAsync(delRequest));            
+          });
+          var delAReq = GetDeleteDbRequest(archiveTable, partition_key, "sort_key", "alb");
+          listOfTasks.Add(client.DeleteItemAsync(delAReq));
+          await Task.WhenAll(listOfTasks);
+
+          logger.LogLine("Restore album completed");
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new DeleteAlbumResponse { IsSuccess = true, ErrorMessage = "", PartitionKey = partition_key })
+          };
+      }
+     
 
       public async Task<APIGatewayProxyResponse> DeleteAlbum(APIGatewayProxyRequest req, ILambdaContext context)
       {
@@ -589,8 +643,8 @@ namespace PhotoAlbum
           logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
           logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
 
-          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
-          logger.LogLine($"albumsTablename {albumsTablename}");
+          var archiveTable = Environment.GetEnvironmentVariable("ARCHIVE_TABLE");
+          logger.LogLine($"archiveTable {archiveTable}");
 
           var photosBucket = Environment.GetEnvironmentVariable("PHOTOS_BUCKET");
           var thumbnailsBucket = Environment.GetEnvironmentVariable("THUMBNAILS_BUCKET");
@@ -605,7 +659,7 @@ namespace PhotoAlbum
           await Deletes3Folder(thumbnailsBucket, s3_folder_key);
 
           // Now delete the dynamodb documents
-          var fullAlbum = await GetAlbumFull(albumsTablename, partition_key);
+          var fullAlbum = await GetAlbumFull(archiveTable, partition_key);
 
           var client = new AmazonDynamoDBClient();
 
@@ -613,10 +667,10 @@ namespace PhotoAlbum
           List<Task> listOfTasks = new List<Task>();
           fullAlbum.Photos.ForEach(ph => {
 
-              var delRequest = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", ph.SortKey);
+              var delRequest = GetDeleteDbRequest(archiveTable, partition_key, "sort_key", ph.SortKey);
               listOfTasks.Add(client.DeleteItemAsync(delRequest));            
           });
-          var delCovReq = GetDeleteDbRequest(albumsTablename, partition_key, "sort_key", "alb");
+          var delCovReq = GetDeleteDbRequest(archiveTable, partition_key, "sort_key", "alb");
           listOfTasks.Add(client.DeleteItemAsync(delCovReq));
 
           await Task.WhenAll(listOfTasks);
