@@ -272,14 +272,24 @@ functions:
         # Restrict our IAM role permissions to
         # the specific table for the stage
         Resource: AlbumsTable
-      - Effect: "Allow"
-        Action:
-            - "s3:*"
-        Resource: "*"
     events: 
       - http:
           method: DELETE
           path: /albums/{PartitionKey}
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
+
+  deletePhoto:
+    handler: CsharpHandlers::PhotoAlbum.Functions::DeletePhoto
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    events: 
+      - http:
+          method: DELETE
+          path: /uploads
           cors:
             origins: '*'
             allowCredentials: true

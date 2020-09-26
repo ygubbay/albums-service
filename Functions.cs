@@ -634,6 +634,81 @@ namespace PhotoAlbum
               Body = JsonConvert.SerializeObject(new DeleteAlbumResponse { IsSuccess = true, ErrorMessage = "", PartitionKey = partition_key })
           };
       }
+
+      public async Task<APIGatewayProxyResponse> DeletePhoto(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+          var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
+
+          var photosBucket = Environment.GetEnvironmentVariable("PHOTOS_BUCKET");
+          var thumbnailsBucket = Environment.GetEnvironmentVariable("THUMBNAILS_BUCKET");
+
+          var request = JsonConvert.DeserializeObject<DeletePhotoRequest>(req.Body);
+
+          logger.LogLine($"DeletePhoto: AlbumId {request.AlbumId}, FileKey {request.FileKey}");
+
+          // Get file locations from dynamodb table
+          var client = new AmazonDynamoDBClient();
+          var db_tbl = Table.LoadTable(client, albumsTablename);
+          var db_rec = await db_tbl.GetItemAsync(request.AlbumId, request.FileKey);
+
+          if (db_rec == null)
+          {
+            string error_msg = $"Photo record not found: Albums table [{albumsTablename}], album_id [{request.AlbumId}], file_key [{request.FileKey}";
+            logger.LogLine(error_msg);
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 403,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new DeletePhotoResponse { IsSuccess = false, ErrorMessage = error_msg, AlbumId = request.AlbumId, FileKey = request.FileKey })
+            };
+          }
+          string s3_key = "";
+          if (!db_rec.TryGetValue("filename", out var db_entry))
+          {
+            string error_msg = $"Photo record found but filename field was missing: Albums table [{albumsTablename}], album_id [{request.AlbumId}], file_key [{request.FileKey}";
+            logger.LogLine(error_msg);
+              return new APIGatewayProxyResponse {
+                
+              StatusCode = 400,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new DeletePhotoResponse { IsSuccess = false, ErrorMessage = error_msg, AlbumId = request.AlbumId, FileKey = request.FileKey })
+            };
+          };
+          s3_key = db_entry.ToString();
+
+          // Remove from s3 albums, thumbnails
+          await Deletes3Photo(photosBucket, s3_key);
+          await Deletes3Photo(thumbnailsBucket, s3_key);
+
+          logger.LogLine($"Photo deleted from s3 buckets {photosBucket}, {thumbnailsBucket}");
+
+          // Remove from dynamodb table
+          var delRequest = GetDeleteDbRequest(albumsTablename, request.AlbumId, "sort_key", request.FileKey);
+          await client.DeleteItemAsync(delRequest);
+
+          logger.LogLine($"Photo deleted from table {albumsTablename}");
+
+          return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new DeletePhotoResponse { IsSuccess = true, ErrorMessage = "", AlbumId = request.AlbumId, FileKey = request.FileKey })
+          };
+
+      }
      
 
       public async Task<APIGatewayProxyResponse> DeleteAlbum(APIGatewayProxyRequest req, ILambdaContext context)
@@ -698,6 +773,22 @@ namespace PhotoAlbum
               TableName = albums_table,
               Key = key
           };
+      }
+
+
+      private async Task Deletes3Photo(string bucket_name, string file_key)
+      {
+          Console.WriteLine($"Deletes3Photo: bucket_name [{bucket_name}], file_key [{file_key}]");
+          var s3Client = new AmazonS3Client(Amazon.RegionEndpoint.EUWest2);
+
+          // delete the files
+          var deleteFileRequest = new DeleteObjectRequest {
+            BucketName = bucket_name, 
+            Key = $"public/{file_key}"
+          };
+          
+          var delFileResponse = await s3Client.DeleteObjectAsync(deleteFileRequest);
+          Console.WriteLine($"Delete file: request [{JsonConvert.SerializeObject(deleteFileRequest)}], response [{JsonConvert.SerializeObject(delFileResponse)}]");
       }
       
       private async Task Deletes3Folder(string bucket_name, string key_name)
