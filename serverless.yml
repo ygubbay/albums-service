@@ -282,6 +282,33 @@ functions:
           authorizer:
             type: aws_iam   
 
+  addComment:
+    handler: CsharpHandlers::PhotoAlbum.Functions::AddComment
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    events: 
+      - http:
+          method: PUT
+          path: /uploads/comments
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
+  setAlbumUpdate:
+    handler: CsharpHandlers::PhotoAlbum.Functions::SetAlbumUpdate
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    events: 
+      - http:
+          method: PUT
+          path: /albums/setupdate/{PartitionKey}
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
+
   deletePhoto:
     handler: CsharpHandlers::PhotoAlbum.Functions::DeletePhoto
     package:

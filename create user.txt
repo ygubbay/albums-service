@@ -5,3 +5,11 @@ aws cognito-idp sign-up \
   --password ******* \
   --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Yehuda" 
   
+  
+aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username egubbay@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Efrat"
+
+aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username ezragubbay99@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Ezra"  
+  
+aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username batsheva.gb@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Batsheva"  
+
+aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username hannahgubbay1@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Channah"  

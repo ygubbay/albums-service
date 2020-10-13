@@ -14,6 +14,7 @@ namespace PhotoAlbum.Models
         public double Size { get;set;}
         public string Type {get;set;}
         public string Owner {get;set;}
+        public string Comment {get;set;}
     }
 
 }

@@ -65,14 +65,13 @@ namespace PhotoAlbum
 
           result.Items.ForEach(item => {
 
-              var album = new Album { Name = item["name"].S, 
-                                Owner = item["owner"].S,
-                                Year = Convert.ToInt32(item["year"].N),
-                                Id = new Guid(item["id"].S),
-                                DateCreated = item["datecreated"].S };
+              var album = Album.DocToObject(item);
               albumList.Add(album);
 
           });
+
+          // client side sort - ouch
+          albumList.Sort((a, b) => b.DateCreated.CompareTo(a.DateCreated));
 
           return new APIGatewayProxyResponse {
                 
@@ -167,11 +166,7 @@ namespace PhotoAlbum
           
             // Get first item
             var item = result.Items[0];
-            album = new Album { Name = item["name"].S, 
-                                Owner = item["owner"].S,
-                                Year = Convert.ToInt32(item["year"].N),
-                                Id = new Guid(item["id"].S),
-                                DateCreated = item["datecreated"].S };
+            album = Album.DocToObject(item);
 
           }
           else {
@@ -192,7 +187,7 @@ namespace PhotoAlbum
 
 
 
-       public async Task<APIGatewayProxyResponse> GetPhoto(APIGatewayProxyRequest req, ILambdaContext context)
+      public async Task<APIGatewayProxyResponse> GetPhoto(APIGatewayProxyRequest req, ILambdaContext context)
       {
         var logger = context.Logger;
 
@@ -269,6 +264,7 @@ namespace PhotoAlbum
                OriginalFilename = db["original_filename"].S,
                Size = Convert.ToDouble(db["size"].N),
                Type = db["type"].S,
+               Comment = !db.ContainsKey("comment") ? "": db["comment"].S
             };
       }
 
@@ -305,11 +301,7 @@ namespace PhotoAlbum
 
             if (ph["sort_key"].S == "alb")
             {
-              album.Album = new Album { Name = ph["name"].S, 
-                                Owner = ph["owner"].S,
-                                Year = Convert.ToInt32(ph["year"].N),
-                                Id = new Guid(ph["id"].S),
-                                DateCreated = ph["datecreated"].S };
+              album.Album = Album.DocToObject(ph);
             }
             else {
               var photo = new Photo {
@@ -321,12 +313,11 @@ namespace PhotoAlbum
                             OriginalFilename = !ph.ContainsKey("original_filename") ? "":ph["original_filename"].S,
                             Size = !ph.ContainsKey("size") ? 0:Convert.ToDouble(ph["size"].N),
                             Type = !ph.ContainsKey("type") ? "":ph["type"].S,
+                            Comment = !ph.ContainsKey("comment") ? "": ph["comment"].S
                           };
 
               album.Photos.Add(photo);
             }
-            
-            
           });
 
           return album;
@@ -360,6 +351,53 @@ namespace PhotoAlbum
 
 
 
+       public async Task<APIGatewayProxyResponse> AddComment(APIGatewayProxyRequest req, ILambdaContext context)
+       {
+         var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          try {
+
+            var request = JsonConvert.DeserializeObject<AddCommentRequest>(req.Body);
+
+            var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+            logger.LogLine($"albumsTablename {albumsTablename}");
+
+            var client = new AmazonDynamoDBClient();
+
+           var table = Table.LoadTable(client, albumsTablename);
+           var doc = await table.GetItemAsync(request.AlbumId, request.FileKey);
+           
+           logger.LogLine("GetItem returned " + JsonConvert.SerializeObject(doc));
+           doc["comment"] = request.Comment;
+
+          logger.LogLine("Saving doc");
+          await table.PutItemAsync(doc);
+          
+          logger.LogLine("Comment added.");
+         return new APIGatewayProxyResponse {
+                
+              StatusCode = 200,
+              Headers = new Dictionary<string, string> () { 
+                { "Access-Control-Allow-Origin", "*"},
+                { "Access-Control-Allow-Credentials", "true" } },
+              Body = JsonConvert.SerializeObject(new CreateAlbumResponse { IsSuccess = true })
+            } ;
+          }
+          catch (Exception ee)
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 500,
+              Body = ee.ToString()
+            } ;
+          }
+
+       }
+
+
 
        public async Task<APIGatewayProxyResponse> CreateAlbum(APIGatewayProxyRequest req, ILambdaContext context)
        {
@@ -386,20 +424,22 @@ namespace PhotoAlbum
 
          var client = new AmazonDynamoDBClient();
           var table = Table.LoadTable(client, albumsTablename);
-          var item = new Document();
+
 
           var id = Guid.NewGuid();
           var datecreated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
 
-          var partition_key = $"{request.Year}_{id}";
-          item["partition_key"] = partition_key;
-          item["sort_key"] = $"alb";
-          item["id"] = id;
-          item["year"] = request.Year;
-          item["name"] = request.Name;
-          item["owner"] = request.Owner;
-          item["datecreated"] = datecreated;
+          var album = new Album {
+             Id = id,
+             Name = request.Name, 
+             Year = request.Year,
+             Owner = request.Owner,
+             DateCreated = datecreated,
+             LastUpdated = datecreated,
+             PhotoCount = 0
+          };
+          var item = Album.ObjectToDoc(album);
 
           logger.LogLine("Saving doc");
           await table.PutItemAsync(item);
@@ -416,7 +456,7 @@ namespace PhotoAlbum
               Owner = request.Owner,
               Year = request.Year, 
               DateCreated = datecreated,
-              PartitionKey = partition_key, 
+              PartitionKey = album.Partition_Key, 
               IsSuccess = true })
             } ;
           }
@@ -428,8 +468,57 @@ namespace PhotoAlbum
               Body = ee.ToString()
             } ;
           }
-       }
+      }
 
+
+      public async Task<APIGatewayProxyResponse> SetAlbumUpdate(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+          var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          try {
+
+          var album_key = req.PathParameters["PartitionKey"];
+
+          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
+          logger.LogLine($"albumsTablename {albumsTablename}");
+
+          var client = new AmazonDynamoDBClient();
+          Table albumsTable = Table.LoadTable(client, albumsTablename);
+
+          var fullAlbum = await GetAlbumFull(albumsTablename, album_key);
+          var photo_count = fullAlbum.Photos.Count();
+
+          var album = fullAlbum.Album;
+          album.LastUpdated = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);          
+          album.PhotoCount = photo_count;          
+
+          logger.LogLine("Saving album doc update");
+          await albumsTable.UpdateItemAsync(Album.ObjectToDoc(album));
+          
+          logger.LogLine("Album saved");
+          return new APIGatewayProxyResponse {
+                  
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> () { 
+                  { "Access-Control-Allow-Origin", "*"},
+                  { "Access-Control-Allow-Credentials", "true" } },
+                Body = ""
+            };
+          }
+          catch (Exception ee)
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 500,
+              Body = ee.ToString()
+            } ;
+          }
+
+      }
 
       public async Task<APIGatewayProxyResponse> AddUpload(APIGatewayProxyRequest req, ILambdaContext context)
       {
@@ -510,20 +599,6 @@ namespace PhotoAlbum
             return item;
       }
 
-      private Document CreateAlbumItem(Album album)
-      {
-          var item = new Document();
-          
-          item["partition_key"] = album.Partition_Key;
-          item["sort_key"] = "alb";
-          item["owner"] = album.Owner;
-          item["year"] = album.Year;
-          item["id"] = album.Id;
-          item["name"] = album.Name;
-          item["datecreated"] = album.DateCreated;
-
-          return item;
-      }
 
       public async Task<APIGatewayProxyResponse> ArchiveAlbum(APIGatewayProxyRequest req, ILambdaContext context)
       {
@@ -552,7 +627,7 @@ namespace PhotoAlbum
                 var doc = CreateUploadItem(ph);
                 createTasks.Add(table.PutItemAsync(doc));            
           });
-          var albumItem = CreateAlbumItem(fullAlbum.Album);
+          var albumItem = Album.ObjectToDoc(fullAlbum.Album);
           albumItem["date_archived"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
           createTasks.Add(table.PutItemAsync(albumItem));
@@ -607,7 +682,7 @@ namespace PhotoAlbum
                 var doc = CreateUploadItem(ph);
                 createTasks.Add(table.PutItemAsync(doc));            
           });
-          var albumItem = CreateAlbumItem(fullAlbum.Album);
+          var albumItem = Album.ObjectToDoc(fullAlbum.Album);
           albumItem["date_archived"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
           createTasks.Add(table.PutItemAsync(albumItem));
