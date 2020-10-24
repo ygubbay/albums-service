@@ -6,10 +6,18 @@ aws cognito-idp sign-up \
   --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Yehuda" 
   
   
+  
+Note: First create family group: family_Gubbay
+aws cognito-idp admin-add-user-to-group --user-pool-id us-east-2_Evw1X1opG --username batsheva.gb@gmail.com --group-name family_Gubbay --region us-east-2 --profile photos-admin-profile
+aws cognito-idp admin-add-user-to-group --user-pool-id us-east-2_Evw1X1opG --username egubbay@gmail.com --group-name family_Gubbay --region us-east-2 --profile photos-admin-profile
+aws cognito-idp admin-add-user-to-group --user-pool-id us-east-2_Evw1X1opG --username ezragubbay99@gmail.com --group-name family_Gubbay --region us-east-2 --profile photos-admin-profile
+aws cognito-idp admin-add-user-to-group --user-pool-id us-east-2_Evw1X1opG --username hadasagubbay@gmail.com --group-name family_Gubbay --region us-east-2 --profile photos-admin-profile
+  
+  
 aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username egubbay@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Efrat"
 
 aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username ezragubbay99@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Ezra"  
   
 aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username batsheva.gb@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Batsheva"  
 
-aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username hannahgubbay1@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Channah"  
+aws cognito-idp sign-up --region us-east-2 --client-id 3mt05lhgc34tu32cai6p6e2v2t --username hadasagubbay@gmail.com --password a1234567 --user-attributes Name="family_name",Value="Gubbay" Name="given_name",Value="Hadassa"  

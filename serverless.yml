@@ -29,6 +29,7 @@ provider:
     PHOTOS_BUCKET: ${self:custom.PHOTO_ALBUMS_BUCKET}
     THUMBNAILS_BUCKET: ${self:custom.PHOTO_THUMBNAILS_BUCKET}
     ARCHIVE_TABLE: ${self:custom.archiveTable}
+    USERS_TABLE: ${self:custom.usersTable}
     
   iamRoleStatements:
     - Effect: Allow
@@ -71,8 +72,23 @@ custom:
   PHOTO_THUMBNAILS_BUCKET: ygubbay-photo-albums-thumbnails
   albumsTable: albums-table-${self:provider.stage}
   archiveTable: albums-archive-${self:provider.stage}
+  usersTable: users-${self:provider.stage}
 
 functions:
+
+  setUserLastLogin:
+    handler: CsharpHandlers::PhotoAlbum.Functions::SetUserLastLogin
+    package:
+      artifact: bin\release\netcoreapp2.1\deploy-package.zip
+    events: 
+      - http:
+          method: PUT
+          path: /users/lastlogin
+          cors:
+            origins: '*'
+            allowCredentials: true
+          authorizer:
+            type: aws_iam   
 
   getAlbums:
     handler: CsharpHandlers::PhotoAlbum.Functions::GetAlbums
@@ -379,6 +395,8 @@ resources:
             AttributeType: S
           - AttributeName: sort_key
             AttributeType: S
+          - AttributeName: last_modified_date
+            AttributeType: S
         KeySchema:
           - AttributeName: partition_key
             KeyType: HASH
@@ -395,3 +413,31 @@ resources:
             KeyType: RANGE
           Projection:
             ProjectionType: 'ALL'        
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: ${self:custom.usersTable}
+        AttributeDefinitions:
+          - AttributeName: family_group
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+          - AttributeName: first_name
+            AttributeType: S
+        KeySchema:
+          - AttributeName: family_group
+            KeyType: HASH
+          - AttributeName: email
+            KeyType: RANGE
+        # Set the capacity to auto-scale
+        BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+        - IndexName: gsiEmail
+          KeySchema:
+          - AttributeName: email
+            KeyType: HASH
+          - AttributeName: first_name
+            KeyType: RANGE
+          Projection:
+            ProjectionType: 'ALL'

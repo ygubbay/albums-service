@@ -24,7 +24,7 @@ namespace PhotoAlbum.Models.Responses
                                 Year = Convert.ToInt32(doc["year"].N),
                                 Id = new Guid(doc["id"].S),
                                 DateCreated = doc["datecreated"].S,
-                                LastUpdated = !doc.ContainsKey("lastupdated") ? "": doc["lastupdated"].S,
+                                LastUpdated = !doc.ContainsKey("last_modified_date") ? "": doc["last_modified_date"].S,
                                 PhotoCount = !doc.ContainsKey("photocount") ? 0: Convert.ToInt32(doc["photocount"].N) };
       }
 
@@ -39,7 +39,7 @@ namespace PhotoAlbum.Models.Responses
           item["id"] = album.Id;
           item["name"] = album.Name;
           item["datecreated"] = album.DateCreated;
-          item["lastupdated"] = album.LastUpdated;
+          item["last_modified_date"] = album.LastUpdated;
           item["photocount"] = album.PhotoCount;
 
           return item;

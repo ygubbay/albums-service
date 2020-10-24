@@ -1,0 +1,2 @@
+aws dynamodb batch-write-item --request-items file://create_user_dynamodb.json --profile photos-admin-profile --region eu-west-2
+

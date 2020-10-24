@@ -23,6 +23,7 @@ using System.Web;
 using PhotoAlbum.Models;
 using Amazon.S3.Encryption;
 using Amazon.S3.Model;
+using Amazon.Rekognition;
 
 [assembly:LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 namespace PhotoAlbum
@@ -54,10 +55,11 @@ namespace PhotoAlbum
           var db_request = new QueryRequest
           {
               TableName = albumsTablename,
-              IndexName = "gsiAlbums",
+              IndexName = "gsiAlbumsLastUpdated",
               KeyConditionExpression = "sort_key = :v_Id",
               ExpressionAttributeValues = new Dictionary<string, AttributeValue> {
-                  {":v_Id", new AttributeValue { S = "alb" }}}
+                  {":v_Id", new AttributeValue { S = "alb" }}},
+              ScanIndexForward = false
           };
 
           List<Album> albumList = new List<Album>();
@@ -69,9 +71,6 @@ namespace PhotoAlbum
               albumList.Add(album);
 
           });
-
-          // client side sort - ouch
-          albumList.Sort((a, b) => b.DateCreated.CompareTo(a.DateCreated));
 
           return new APIGatewayProxyResponse {
                 
@@ -470,6 +469,99 @@ namespace PhotoAlbum
           }
       }
 
+
+      public string TestFace(string face)
+      {
+        var rekognitionClient = new AmazonRekognitionClient();
+
+        return "";
+      }
+
+      private async Task<User> GetUser(string tbl_name, string email)
+      {
+         var client = new AmazonDynamoDBClient();
+
+         var conditions = new Dictionary<string, Condition> { 
+
+           // Hash key condition
+           {
+             "email",
+             new Condition { ComparisonOperator = "EQ", 
+                             AttributeValueList = new List<AttributeValue> { new AttributeValue { S = email } }
+             }
+           }
+         };
+
+         var db_request = new QueryRequest
+          {
+              TableName = tbl_name,
+              IndexName = "gsiEmail",
+              KeyConditions = conditions
+          };
+
+          
+          
+
+          var result = await client.QueryAsync(db_request);
+          Console.WriteLine($"users docs: [{result.Items?.Count}]");
+
+          User user = User.DocToObject(result.Items[0]);
+
+          return user;
+
+      }
+
+      public async Task<APIGatewayProxyResponse> SetUserLastLogin(APIGatewayProxyRequest req, ILambdaContext context)
+      {
+          var logger = context.Logger;
+
+          logger.LogLine($"request {JsonConvert.SerializeObject(req)}");
+          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
+
+          try {
+
+          var request = JsonConvert.DeserializeObject<SetUserLastLoginRequest>(req.Body);
+
+          var usersTablename = Environment.GetEnvironmentVariable("USERS_TABLE");
+          logger.LogLine($"usersTablename {usersTablename}");
+
+          var client = new AmazonDynamoDBClient();
+          Table usersTable = Table.LoadTable(client, usersTablename);
+
+          var user_email = request.Email;
+          logger.LogLine($"User: {user_email}");
+
+          if (string.IsNullOrEmpty(user_email))
+          {
+            throw new InvalidDataException("No email provided.");
+          }
+          
+          var user = await GetUser(usersTablename, user_email);
+          user.LastLoginDate = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+                                            CultureInfo.InvariantCulture);
+
+          await usersTable.UpdateItemAsync(User.ObjectToDoc(user));
+          
+          logger.LogLine("User.LastLoginDate saved");
+          return new APIGatewayProxyResponse {
+                  
+                StatusCode = 200,
+                Headers = new Dictionary<string, string> () { 
+                  { "Access-Control-Allow-Origin", "*"},
+                  { "Access-Control-Allow-Credentials", "true" } },
+                Body = ""
+            };
+          }
+          catch (Exception ee)
+          {
+            return new APIGatewayProxyResponse {
+                
+              StatusCode = 500,
+              Body = ee.ToString()
+            } ;
+          }
+
+      }
 
       public async Task<APIGatewayProxyResponse> SetAlbumUpdate(APIGatewayProxyRequest req, ILambdaContext context)
       {
