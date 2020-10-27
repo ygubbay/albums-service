@@ -6,7 +6,6 @@ namespace PhotoAlbum.Models
     {
         public string PartitionKey {get; set;}
         public string SortKey {get; set;}
-
         public string Filename {get;set;}
         public string DateCreated {get;set;}
         public string LastModifiedDate {get;set;}

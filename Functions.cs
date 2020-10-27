@@ -222,8 +222,6 @@ namespace PhotoAlbum
                 }
          };
 
-          
-
          var db_request = new QueryRequest
           {
               TableName = albumsTablename,
@@ -775,7 +773,7 @@ namespace PhotoAlbum
                 createTasks.Add(table.PutItemAsync(doc));            
           });
           var albumItem = Album.ObjectToDoc(fullAlbum.Album);
-          albumItem["date_archived"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
+          albumItem["date_restored"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                             CultureInfo.InvariantCulture);
           createTasks.Add(table.PutItemAsync(albumItem));
           await Task.WhenAll(createTasks);
@@ -1028,12 +1026,19 @@ namespace PhotoAlbum
           item["thumbnail_key"] = request.ThumbnailKey;
           item["owner"] = request.Owner;
 
+          // this should attempt to extract a date + time from the filename
+          // if not available, put dateuploaded
+          // future: we should sort album, based on this value
+          int start_pos = request.Filename.IndexOf("20");
+
+          item["event_date"] = start_pos == -1 ? request.Filename: request.Filename.Substring(start_pos);
+
           item["dateuploaded"] = uploadDate;
 
           logger.LogLine("Saving doc");
           await table.PutItemAsync(item);
           
-          logger.LogLine("Album created");
+          logger.LogLine("Photo created");
          return new CreatePhotoResponse { Id = id };
        }
 

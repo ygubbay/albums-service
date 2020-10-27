@@ -26,10 +26,12 @@ provider:
   runtime: dotnetcore2.1
   environment:
     ALBUMS_TABLE: ${self:custom.albumsTable}
+    PHOTOS_TABLE: ${self:custom.photosTable}
+    ARCHIVE_TABLE: ${self:custom.albumsArchiveTable}
+    PHOTOS_ARCHIVE_TABLE: ${self:custom.photosArchiveTable}
+    USERS_TABLE: ${self:custom.usersTable}
     PHOTOS_BUCKET: ${self:custom.PHOTO_ALBUMS_BUCKET}
     THUMBNAILS_BUCKET: ${self:custom.PHOTO_THUMBNAILS_BUCKET}
-    ARCHIVE_TABLE: ${self:custom.archiveTable}
-    USERS_TABLE: ${self:custom.usersTable}
     
   iamRoleStatements:
     - Effect: Allow
@@ -71,7 +73,9 @@ custom:
   PHOTO_ALBUMS_BUCKET: ygubbay-photo-albums
   PHOTO_THUMBNAILS_BUCKET: ygubbay-photo-albums-thumbnails
   albumsTable: albums-table-${self:provider.stage}
-  archiveTable: albums-archive-${self:provider.stage}
+  albumsArchiveTable: albums-archive-${self:provider.stage}
+  photosTable: photos-${self:provider.stage}
+  photosArchiveTable: photos-archive-${self:provider.stage}
   usersTable: users-${self:provider.stage}
 
 functions:
@@ -247,7 +251,7 @@ functions:
         - "dynamodb:*"
         # Restrict our IAM role permissions to
         # the specific table for the stage
-        Resource: ArchiveTable
+        Resource: albumsArchiveTable
     events: 
       - http:
           method: PUT
@@ -267,7 +271,7 @@ functions:
         - "dynamodb:*"
         # Restrict our IAM role permissions to
         # the specific table for the stage
-        Resource: ArchiveTable
+        Resource: albumsArchiveTable
     events: 
       - http:
           method: PUT
@@ -385,11 +389,45 @@ resources:
         ResponseType: DEFAULT_5XX
         RestApiId:
           Ref: 'ApiGatewayRestApi'
+    PhotosTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: ${self:custom.photosTable}
+        AttributeDefinitions:
+          - AttributeName: partition_key
+            AttributeType: S
+          - AttributeName: sort_key
+            AttributeType: S
+        KeySchema:
+          - AttributeName: partition_key
+            KeyType: HASH
+          - AttributeName: sort_key
+            KeyType: RANGE
+        # Set the capacity to auto-scale
+        BillingMode: PAY_PER_REQUEST
+    PhotosArchiveTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: ${self:custom.photosArchiveTable}
+        AttributeDefinitions:
+          - AttributeName: partition_key
+            AttributeType: S
+          - AttributeName: sort_key
+            AttributeType: S
+        KeySchema:
+          - AttributeName: partition_key
+            KeyType: HASH
+          - AttributeName: sort_key
+            KeyType: RANGE
+        # Set the capacity to auto-scale
+        BillingMode: PAY_PER_REQUEST
     ArchiveAlbumsTable:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Retain
       Properties:
-        TableName: ${self:custom.archiveTable}
+        TableName: ${self:custom.albumsArchiveTable}
         AttributeDefinitions:
           - AttributeName: partition_key
             AttributeType: S
