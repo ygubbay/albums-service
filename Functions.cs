@@ -261,7 +261,8 @@ namespace PhotoAlbum
                OriginalFilename = db["original_filename"].S,
                Size = Convert.ToDouble(db["size"].N),
                Type = db["type"].S,
-               Comment = !db.ContainsKey("comment") ? "": db["comment"].S
+               Comment = !db.ContainsKey("comment") ? "": db["comment"].S,
+               EventDate = !db.ContainsKey("event_date") ? "": db["event_date"].S
             };
       }
 
@@ -310,7 +311,8 @@ namespace PhotoAlbum
                             OriginalFilename = !ph.ContainsKey("original_filename") ? "":ph["original_filename"].S,
                             Size = !ph.ContainsKey("size") ? 0:Convert.ToDouble(ph["size"].N),
                             Type = !ph.ContainsKey("type") ? "":ph["type"].S,
-                            Comment = !ph.ContainsKey("comment") ? "": ph["comment"].S
+                            Comment = !ph.ContainsKey("comment") ? "": ph["comment"].S,
+                            EventDate = !ph.ContainsKey("event_date") ? "": ph["event_date"].S
                           };
 
               album.Photos.Add(photo);
@@ -667,6 +669,12 @@ namespace PhotoAlbum
             item["type"] = request.Type;
             item["datecreated"] = date_created.ToString("yyyy-MM-dd HH:mm:ss.fff",
                                                           CultureInfo.InvariantCulture);
+          // this should attempt to extract a date + time from the filename
+          // if not available, put dateuploaded
+          // future: we should sort album, based on this value
+          int start_pos = request.OriginalFilename.IndexOf("20");
+
+          item["event_date"] = start_pos == -1 ? request.OriginalFilename: request.OriginalFilename.Substring(start_pos);
 
             return item;
       }
@@ -685,6 +693,7 @@ namespace PhotoAlbum
             item["size"] = photo.Size;
             item["type"] = photo.Type;
             item["datecreated"] = photo.DateCreated;
+            item["event_date"] = photo.EventDate;
 
             return item;
       }
@@ -999,48 +1008,7 @@ namespace PhotoAlbum
            
         }
       
-       public async Task<CreatePhotoResponse> CreatePhoto(CreatePhotoRequest request, ILambdaContext context)
-       {
-         var logger = context.Logger;
-
-          logger.LogLine($"request {JsonConvert.SerializeObject(request)}");
-          logger.LogLine($"context {JsonConvert.SerializeObject(context)}");
-
-          var albumsTablename = Environment.GetEnvironmentVariable("ALBUMS_TABLE");
-          logger.LogLine($"albumsTablename {albumsTablename}");
-
-         var client = new AmazonDynamoDBClient();
-          var table = Table.LoadTable(client, albumsTablename);
-          var item = new Document();
-
-          var id = Guid.NewGuid();
-          var uploadDate = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff",
-                                            CultureInfo.InvariantCulture);
-
-          item["partition_key"] = request.AlbumId;
-          item["sort_key"] = $"pic_{uploadDate}_{request.Filename}";
-          item["id"] = id;
-          item["orig_filename"] = request.Filename;
-          item["description"] = request.Description;
-          item["file_key"] = request.FileKey;
-          item["thumbnail_key"] = request.ThumbnailKey;
-          item["owner"] = request.Owner;
-
-          // this should attempt to extract a date + time from the filename
-          // if not available, put dateuploaded
-          // future: we should sort album, based on this value
-          int start_pos = request.Filename.IndexOf("20");
-
-          item["event_date"] = start_pos == -1 ? request.Filename: request.Filename.Substring(start_pos);
-
-          item["dateuploaded"] = uploadDate;
-
-          logger.LogLine("Saving doc");
-          await table.PutItemAsync(item);
-          
-          logger.LogLine("Photo created");
-         return new CreatePhotoResponse { Id = id };
-       }
+       
 
        public async Task AutoThumbnail(S3Event evnt, ILambdaContext context)
        {

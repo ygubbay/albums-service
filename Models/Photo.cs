@@ -14,6 +14,7 @@ namespace PhotoAlbum.Models
         public string Type {get;set;}
         public string Owner {get;set;}
         public string Comment {get;set;}
+        public string EventDate { get; set; }
     }
 
 }
